@@ -1,8 +1,9 @@
-import {Batch, Result, Tweet, TweetTuple, w3fStorage} from "./consts";
+import { Batch, Result, Tweet, TwitterAccountWithUsername, w3fStorage } from "./consts";
 
 export class Storage {
     private storage: w3fStorage;
     private mintingDayTimestamp: number;
+    private static ACCOUNT_INFO_KEY_SUFFIX = "_accountInfo";
 
     constructor(storage: w3fStorage, mintingDayTimestamp: number) {
         this.storage = storage;
@@ -29,15 +30,15 @@ export class Storage {
     }
 
     async clearBatchData(batch: Batch) {
-        await this.storage.delete(`${this.mintingDayTimestamp}_userIDForBatch_${batch.startIndex}:${batch.endIndex}`);
+        await this.storage.delete(`${this.mintingDayTimestamp}_accountsForBatch_${batch.startIndex}:${batch.endIndex}`);
     }
 
-    async saveRemainingUsernames(userIDs: string[]) {
-        await this.storage.set(`${this.mintingDayTimestamp}_nextUsernames`, JSON.stringify(userIDs));
+    async saveRemainingAccounts(accounts: TwitterAccountWithUsername[]) {
+        await this.storage.set(`${this.mintingDayTimestamp}_nextAccounts`, JSON.stringify(accounts));
     }
 
-    async getRemainingUsernames(): Promise<string[]> {
-        return Promise.resolve(JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_nextUsernames`) || '[]'))
+    async getRemainingAccounts(): Promise<TwitterAccountWithUsername[]> {
+        return Promise.resolve(JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_nextAccounts`) || '[]'))
     }
 
     // await storage.get(`${mintingDayTimestamp}_isFetchedLastUserIndex`) == 'true'
@@ -49,12 +50,12 @@ export class Storage {
         await this.storage.set(`${this.mintingDayTimestamp}_isFetchedLastUserIndex`, val ? 'true' : 'false');
     }
 
-    async setUsernamesForBatch(startIndex: number, endIndex: number, userIDs: string[]) {
-        await this.storage.set(`${this.mintingDayTimestamp}_usernamesForBatch_${startIndex}:${endIndex}`, JSON.stringify(userIDs));
+    async setAccountsForBatch(startIndex: number, endIndex: number, accounts: TwitterAccountWithUsername[]) {
+        await this.storage.set(`${this.mintingDayTimestamp}_accountsForBatch_${startIndex}:${endIndex}`, JSON.stringify(accounts));
     }
 
-    async getUsernamesForBatch(startIndex: number, endIndex: number): Promise<string[]> {
-        const res: string[] = JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_usernamesForBatch_${startIndex}:${endIndex}`) || '[]');
+    async getAccountsForBatch(startIndex: number, endIndex: number): Promise<TwitterAccountWithUsername[]> {
+        const res: TwitterAccountWithUsername[] = JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_accountsForBatch_${startIndex}:${endIndex}`) || '[]');
         return Promise.resolve(res);
     }
 
@@ -90,4 +91,17 @@ export class Storage {
         return parseInt(await this.storage.get(`${this.mintingDayTimestamp}_tweetOrder`) || '0');
     }
 
+    async loadAccountInfoMap(): Promise<Map<number, TwitterAccountWithUsername>> {
+        const raw = await this.storage.get(`${this.mintingDayTimestamp}${Storage.ACCOUNT_INFO_KEY_SUFFIX}`);
+        if (!raw) {
+            return new Map();
+        }
+        const parsed: Array<[number, TwitterAccountWithUsername]> = JSON.parse(raw);
+        return new Map(parsed);
+    }
+
+    async saveAccountInfoMap(map: Map<number, TwitterAccountWithUsername>) {
+        const array = Array.from(map.entries());
+        await this.storage.set(`${this.mintingDayTimestamp}${Storage.ACCOUNT_INFO_KEY_SUFFIX}`, JSON.stringify(array));
+    }
 }

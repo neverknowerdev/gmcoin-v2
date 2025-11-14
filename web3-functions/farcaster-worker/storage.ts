@@ -1,8 +1,9 @@
-import { Batch, Result, Cast, w3fStorage } from "./consts";
+import { Batch, Result, Cast, w3fStorage, FarcasterAccountWithUsername } from "./consts";
 
 export class Storage {
     private storage: w3fStorage;
     private mintingDayTimestamp: number;
+    private static ACCOUNT_INFO_KEY_SUFFIX = "_accountInfo";
 
     constructor(storage: w3fStorage, mintingDayTimestamp: number) {
         this.storage = storage;
@@ -29,15 +30,15 @@ export class Storage {
     }
 
     async clearBatchData(batch: Batch) {
-        await this.storage.delete(`${this.mintingDayTimestamp}_fidForBatch_${batch.startIndex}:${batch.endIndex}`);
+        await this.storage.delete(`${this.mintingDayTimestamp}_accountsForBatch_${batch.startIndex}:${batch.endIndex}`);
     }
 
-    async saveRemainingFIDs(fids: number[]) {
-        await this.storage.set(`${this.mintingDayTimestamp}_nextFIDs`, JSON.stringify(fids));
+    async saveRemainingAccounts(accounts: FarcasterAccountWithUsername[]) {
+        await this.storage.set(`${this.mintingDayTimestamp}_nextAccounts`, JSON.stringify(accounts));
     }
 
-    async getRemainingFIDs(): Promise<number[]> {
-        return Promise.resolve(JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_nextFIDs`) || '[]'))
+    async getRemainingAccounts(): Promise<FarcasterAccountWithUsername[]> {
+        return Promise.resolve(JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_nextAccounts`) || '[]'))
     }
 
     async getIsFetchedLastUserIndex(): Promise<boolean> {
@@ -48,12 +49,12 @@ export class Storage {
         await this.storage.set(`${this.mintingDayTimestamp}_isFetchedLastUserIndex`, val ? 'true' : 'false');
     }
 
-    async setFIDsForBatch(startIndex: number, endIndex: number, fids: number[]) {
-        await this.storage.set(`${this.mintingDayTimestamp}_fidsForBatch_${startIndex}:${endIndex}`, JSON.stringify(fids));
+    async setAccountsForBatch(startIndex: number, endIndex: number, accounts: FarcasterAccountWithUsername[]) {
+        await this.storage.set(`${this.mintingDayTimestamp}_accountsForBatch_${startIndex}:${endIndex}`, JSON.stringify(accounts));
     }
 
-    async getFIDsForBatch(startIndex: number, endIndex: number): Promise<number[]> {
-        const res: number[] = JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_fidsForBatch_${startIndex}:${endIndex}`) || '[]');
+    async getAccountsForBatch(startIndex: number, endIndex: number): Promise<FarcasterAccountWithUsername[]> {
+        const res: FarcasterAccountWithUsername[] = JSON.parse(await this.storage.get(`${this.mintingDayTimestamp}_accountsForBatch_${startIndex}:${endIndex}`) || '[]');
         return Promise.resolve(res);
     }
 
@@ -87,5 +88,19 @@ export class Storage {
 
     async getCastOrder(): Promise<number> {
         return parseInt(await this.storage.get(`${this.mintingDayTimestamp}_castOrder`) || '0');
+    }
+
+    async loadAccountInfoMap(): Promise<Map<number, FarcasterAccountWithUsername>> {
+        const raw = await this.storage.get(`${this.mintingDayTimestamp}${Storage.ACCOUNT_INFO_KEY_SUFFIX}`);
+        if (!raw) {
+            return new Map();
+        }
+        const parsed: Array<[number, FarcasterAccountWithUsername]> = JSON.parse(raw);
+        return new Map(parsed);
+    }
+
+    async saveAccountInfoMap(map: Map<number, FarcasterAccountWithUsername>) {
+        const array = Array.from(map.entries());
+        await this.storage.set(`${this.mintingDayTimestamp}${Storage.ACCOUNT_INFO_KEY_SUFFIX}`, JSON.stringify(array));
     }
 }

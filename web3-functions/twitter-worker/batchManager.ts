@@ -1,4 +1,4 @@
-import { Batch } from "./consts"; // Assuming w3fStorage is defined in consts
+import { Batch, TwitterAccountWithUsername } from "./consts";
 import { Storage } from "./storage";
 import { SmartContractConnector } from "./smartContractConnector";
 import { TwitterRequester } from "./twitterRequester";
@@ -15,6 +15,7 @@ export class BatchManager {
     private logger: Logger;
     private queryList: string[] = [];
     private userIndexByUsername: Map<string, number> = new Map();
+    private accountInfoByUserIndex: Map<number, TwitterAccountWithUsername> = new Map();
 
     constructor(logger: Logger, storage: Storage, contractConnector: SmartContractConnector, mintingDayTimestamp: number, concurrencyLimit: number) {
         this.storage = storage;
@@ -27,7 +28,8 @@ export class BatchManager {
     async generateNewBatches(requester: TwitterRequester, mintingDayTimestamp: number, batches: Batch[]): Promise<{
         batchesToProcess: Batch[];
         queryList: string[];
-        userIndexByUsername: Map<string, number>
+        userIndexByUsername: Map<string, number>;
+        accountInfoByUserIndex: Map<number, TwitterAccountWithUsername>;
     }> {
         // skip already done batches: nextCursor == '' && errorCount == 0
         batches = batches.filter(batch => !(batch.nextCursor == '' && batch.errorCount == 0))
@@ -39,14 +41,14 @@ export class BatchManager {
 
             // cache userIDs for batches
             // fetch them here
-            const batchUsernames = await this.storage.getUsernamesForBatch(cur.startIndex, cur.endIndex);
-            this.logger.info(`batchUsernames`, batchUsernames.length, batchUsernames);
+            const batchAccounts = await this.storage.getAccountsForBatch(cur.startIndex, cur.endIndex);
+            this.logger.info(`batchAccounts`, batchAccounts.length, batchAccounts);
 
-            const generatedQuery = createUserQueryStringStatic(batchUsernames, mintingDayTimestamp, KEYWORD);
+            const generatedQuery = createUserQueryStringStatic(batchAccounts, mintingDayTimestamp, KEYWORD);
             this.queryList.push(generatedQuery);
 
-            this.logger.info(`userIndexByUsername`, batchUsernames.length, cur.startIndex, batchUsernames);
-            fillUserIndexByUsernames(this.logger, this.userIndexByUsername, batchUsernames, cur.startIndex);
+            this.logger.info(`userIndexByUsername`, batchAccounts.length, cur.startIndex, batchAccounts);
+            fillUserIndexByAccounts(this.logger, this.userIndexByUsername, this.accountInfoByUserIndex, batchAccounts, cur.startIndex);
         }
 
         if (batches.length < this.concurrencyLimit) {
@@ -57,20 +59,20 @@ export class BatchManager {
             let startIndex = maxEndIndex;
 
             this.logger.info(`generateNewBatches`, newCursorsCount);
-            let remainingUsernames = await this.contractConnector.getNextUsernames(requester, startIndex, newCursorsCount * 50);
-            this.logger.info(`remainingUsernames fetched from smart-contract`, remainingUsernames.length, remainingUsernames);
+            let remainingAccounts = await this.contractConnector.getNextAccounts(requester, startIndex, newCursorsCount * 50);
+            this.logger.info(`remainingAccounts fetched from smart-contract`, remainingAccounts.length, remainingAccounts);
 
             for (let i = 0; i < newCursorsCount; i++) {
-                if (remainingUsernames.length == 0) {
+                if (remainingAccounts.length == 0) {
                     break;
                 }
 
-                this.logger.info(`generateNewBatches`, i, remainingUsernames.length);
+                this.logger.info(`generateNewBatches`, i, remainingAccounts.length);
 
                 const {
                     queryString,
                     recordInsertedCount
-                } = createUserQueryString(remainingUsernames, this.mintingDayTimestamp, MAX_TWITTER_SEARCH_QUERY_LENGTH, KEYWORD);
+                } = createUserQueryString(remainingAccounts, this.mintingDayTimestamp, MAX_TWITTER_SEARCH_QUERY_LENGTH, KEYWORD);
 
                 if (recordInsertedCount == 0) {
                     break;
@@ -93,29 +95,30 @@ export class BatchManager {
 
                 batches.push(newBatch);
 
-                const batchUsernames = remainingUsernames.slice(0, recordInsertedCount);
+                const batchAccounts = remainingAccounts.slice(0, recordInsertedCount);
 
-                this.logger.info(`batchUsernames`, batchUsernames.length, newBatch.startIndex, batchUsernames);
-                fillUserIndexByUsernames(this.logger, this.userIndexByUsername, batchUsernames, newBatch.startIndex);
+                this.logger.info(`batchAccounts`, batchAccounts.length, newBatch.startIndex, batchAccounts);
+                fillUserIndexByAccounts(this.logger, this.userIndexByUsername, this.accountInfoByUserIndex, batchAccounts, newBatch.startIndex);
 
-                await this.storage.setUsernamesForBatch(newBatch.startIndex, newBatch.endIndex, batchUsernames);
+                await this.storage.setAccountsForBatch(newBatch.startIndex, newBatch.endIndex, batchAccounts);
 
-                remainingUsernames = remainingUsernames.slice(recordInsertedCount);
-                this.logger.info(`remainingUsernames final`, remainingUsernames.length, remainingUsernames);
+                remainingAccounts = remainingAccounts.slice(recordInsertedCount);
+                this.logger.info(`remainingAccounts final`, remainingAccounts.length, remainingAccounts);
             }
 
-            await this.storage.saveRemainingUsernames(remainingUsernames);
+            await this.storage.saveRemainingAccounts(remainingAccounts);
         }
 
         return Promise.resolve({
             batchesToProcess: batches,
             queryList: this.queryList,
-            userIndexByUsername: this.userIndexByUsername
+            userIndexByUsername: this.userIndexByUsername,
+            accountInfoByUserIndex: this.accountInfoByUserIndex
         });
     }
 }
 
-function createUserQueryString(usernames: string[], mintingDayTimestamp: number, maxLength: number, queryPrefix: string): {
+function createUserQueryString(accounts: TwitterAccountWithUsername[], mintingDayTimestamp: number, maxLength: number, queryPrefix: string): {
     queryString: string;
     recordInsertedCount: number
 } {
@@ -125,9 +128,9 @@ function createUserQueryString(usernames: string[], mintingDayTimestamp: number,
     let ri = 0; // record inserted count
 
     let usernameAdded = 0;
-    for (; ri < usernames.length; ri++) {
-        const username = usernames[ri];
-        if (username == '') {
+    for (; ri < accounts.length; ri++) {
+        const username = accounts[ri].username;
+        if (username == '' || !username) {
             continue;
         }
 
@@ -151,19 +154,20 @@ function createUserQueryString(usernames: string[], mintingDayTimestamp: number,
     return { queryString, recordInsertedCount: ri };
 }
 
-function createUserQueryStringStatic(usernames: string[], mintingDayTimestamp: number, queryPrefix: string): string {
+function createUserQueryStringStatic(accounts: TwitterAccountWithUsername[], mintingDayTimestamp: number, queryPrefix: string): string {
     const untilDayStr = formatDay(mintingDayTimestamp, 1);
     const sinceDayStr = formatDay(mintingDayTimestamp, 0);
     let queryString = `${queryPrefix} since:${sinceDayStr} until:${untilDayStr} AND (`;
-    for (let i = 0; i < usernames.length; i++) {
-        if (usernames[i] == '') {
+    for (let i = 0; i < accounts.length; i++) {
+        const username = accounts[i].username;
+        if (!username || username == '') {
             continue;
         }
 
         if (i > 0) {
             queryString += ` OR `;
         }
-        queryString += `from:${usernames[i]}`;
+        queryString += `from:${username}`;
     }
 
     queryString += `)`;
@@ -183,13 +187,25 @@ function formatDay(timestamp: number, addDays: number): string {
     return formatter.format(date);
 }
 
-function fillUserIndexByUsernames(logger: Logger, userIndexByUsernames: Map<string, number>, batchUsernames: string[], startIndex: number) {
-    for (let i = 0; i < batchUsernames.length; i++) {
-        if (batchUsernames[i] == '') {
+function fillUserIndexByAccounts(
+    logger: Logger,
+    userIndexByUsernames: Map<string, number>,
+    accountInfoByUserIndex: Map<number, TwitterAccountWithUsername>,
+    batchAccounts: TwitterAccountWithUsername[],
+    startIndex: number
+) {
+    for (let i = 0; i < batchAccounts.length; i++) {
+        const account = batchAccounts[i];
+        if (!account.username || account.username == '') {
             continue;
         }
 
-        logger.info(`fillUserIndexByUsernames`, batchUsernames[i], startIndex + i);
-        userIndexByUsernames.set(batchUsernames[i], startIndex + i);
+        const userIndex = startIndex + i;
+        logger.info(`fillUserIndexByUsernames`, account.username, userIndex);
+        userIndexByUsernames.set(account.username, userIndex);
+        accountInfoByUserIndex.set(userIndex, {
+            ...account,
+            userIndex,
+        });
     }
 }

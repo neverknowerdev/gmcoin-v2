@@ -1,5 +1,7 @@
 {
-  "contractAddress": "0x0000000000000000000000000000000000000000",
+  "minterAddress": "0x0000000000000000000000000000000000000000",
+  "accountManagerAddress": "0x0000000000000000000000000000000000000000",
+  "gmCoinAddress": "0x0000000000000000000000000000000000000000",
   "concurrencyLimit": 3,
   "serverURLPrefix": "https://api.example.com/",
   "neynarFeedURL": "https://api.neynar.com/v2/farcaster/feed/"

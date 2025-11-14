@@ -6,7 +6,9 @@
   "retries": 10,
   "retryDelay": 60,
   "userArgs": {
-    "contractAddress": "string",
+    "minterAddress": "string",
+    "accountManagerAddress": "string",
+    "gmCoinAddress": "string",
     "tweetLookupURL": "string",
     "concurrencyLimit": "number",
     "twitterOptimizedServerHost": "string",

@@ -1,5 +1,7 @@
 {
-  "contractAddress": "",
+  "minterAddress": "",
+  "accountManagerAddress": "",
+  "gmCoinAddress": "",
   "tweetLookupURL": "https://api.twitter.com/2/tweets",
   "serverURLPrefix": "",
   "concurrencyLimit": 10,
