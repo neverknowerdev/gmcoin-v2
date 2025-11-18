@@ -1,11 +1,6 @@
 import { expect, use } from "chai";
 import hre from "hardhat";
 import isEqual from 'lodash/isEqual';
-import { ethers, w3f } from hre;
-import {
-    Web3FunctionUserArgs,
-    Web3FunctionResultV2,
-} from "@gelatonetwork/web3-functions-sdk";
 import { Web3FunctionHardhat } from "@gelatonetwork/web3-functions-sdk/hardhat-plugin";
 import { Provider, HDNodeWallet, EventLog, Contract, JsonRpcProvider } from "ethers";
 import { MockHttpServer } from './tools/mockServer';
@@ -17,6 +12,8 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { IncomingHttpHeaders } from "http";
 import { blake2b } from "blakejs";
 import { MinterEvents } from './tools/helpers';
+
+const { ethers, w3f } = hre;
 
 describe("GelatoW3F Twitter Worker Integration", function () {
     let mockServer: MockHttpServer;
@@ -139,7 +136,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
         mockServer.mock('/SaveTweets', 'POST', { success: true });
 
         mockServer.mockFunc('/UploadTweetsToIPFS', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
-            const receivedJSON = JSON.parse(body);
+            const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
             expect(apiKey?.indexOf('sN') === 0).to.be.true;
 
@@ -182,6 +179,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
         const perLike = Number(mintingSettings.pointsPerLike);
         const perHashtag = Number(mintingSettings.pointsPerHashtag);
         const perCashtag = Number(mintingSettings.pointsPerCashtag);
+        const coinsMultiplicatorBigInt = BigInt(mintingSettings.coinsMultiplicator.toString());
 
         allUserTweetsByUsername.forEach((tweets, uid) => {
             let totalHashtagsCount = 0;
@@ -228,12 +226,9 @@ describe("GelatoW3F Twitter Worker Integration", function () {
         for (const [twitterId, wallet] of walletByTwitterId) {
             const points = userPoints.get(`user${twitterId}`) || 0;
             const balance = await gmCoin.balanceOf(wallet as any);
-            const coinsMultiplicatorBigInt = BigInt(coinsMultiplicator);
-            const actualPoints = balance / coinsMultiplicatorBigInt / 10n ** 18n;
+            const expectedAmount = BigInt(points) * coinsMultiplicatorBigInt;
 
-            const expectedPoints = points;
-
-            expect(actualPoints, `twitterId ${twitterId}`).to.be.equal(BigInt(expectedPoints));
+            expect(balance, `twitterId ${twitterId}`).to.be.equal(expectedAmount);
         }
 
         console.log('minting finished here!!');
@@ -324,7 +319,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
 
         let savedTweets = [];
         mockServer.mockFunc('/SaveTweets', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
-            const receivedJSON = JSON.parse(body);
+            const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
             expect(apiKey?.indexOf('sN') === 0).to.be.true;
 
@@ -337,7 +332,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
         });
 
         mockServer.mockFunc('/UploadTweetsToIPFS', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
-            const receivedJSON = JSON.parse(body);
+            const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
             expect(apiKey?.indexOf('sN') === 0).to.be.true;
 

@@ -180,7 +180,7 @@ describe("GelatoW3F Twitter Verification", function () {
             }
 
             // Query for TwitterVerificationResult event using the contract's filter
-            const filter = accountManager.filters.TwitterVerificationResult(null, walletAddress);
+            const filter = accountManager.filters.TwitterVerificationResult(undefined, walletAddress);
             const events = await accountManager.queryFilter(filter, -1);
             expect(events.length).to.be.greaterThan(0);
 
@@ -245,7 +245,7 @@ describe("GelatoW3F Twitter Verification", function () {
             }
 
             // Query for TwitterVerificationResult event using the contract's filter
-            const filter = accountManager.filters.TwitterVerificationResult(null, walletAddress);
+            const filter = accountManager.filters.TwitterVerificationResult(undefined, walletAddress);
             const events = await accountManager.queryFilter(filter, -1);
             expect(events.length).to.be.greaterThan(0);
 
@@ -327,7 +327,7 @@ describe("GelatoW3F Twitter Verification", function () {
             }
 
             // Query for TwitterVerificationResult event using the contract's filter
-            const filter = accountManager.filters.TwitterVerificationResult(null, walletAddress);
+            const filter = accountManager.filters.TwitterVerificationResult(undefined, walletAddress);
             const events = await accountManager.queryFilter(filter, -1);
             expect(events.length).to.be.greaterThan(0);
 

@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { Web3FunctionResultV2 } from "@gelatonetwork/web3-functions-sdk";
 import { Web3FunctionHardhat } from "@gelatonetwork/web3-functions-sdk/hardhat-plugin";
 import { deployAllContracts } from "./tools/deployContract";
 import { MinterEvents } from "./tools/helpers";
@@ -79,12 +80,18 @@ describe("Farcaster Worker (v2)", function () {
             },
         });
 
-        expect(result.canExec).to.equal(true);
-        expect(result.callData).to.have.length(3);
+        const errorMessage = "message" in result ? result.message : undefined;
+        expect(result.canExec, errorMessage).to.equal(true);
+        if (!result.canExec) {
+            throw new Error(errorMessage ?? "web3 function is not executable");
+        }
 
-        const gmCall = result.callData[0];
-        const processCall = result.callData[1];
-        const finishCall = result.callData[2];
+        const execResult = result as Extract<Web3FunctionResultV2, { canExec: true }>;
+        expect(execResult.callData).to.have.length(3);
+
+        const gmCall = execResult.callData[0];
+        const processCall = execResult.callData[1];
+        const finishCall = execResult.callData[2];
 
         const gmInterface = gmCoin.interface;
         const minterInterface = minter.interface;

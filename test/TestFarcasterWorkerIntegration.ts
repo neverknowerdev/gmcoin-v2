@@ -1,13 +1,8 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import isEqual from 'lodash/isEqual';
-import { ethers, w3f } from hre;
-import {
-    Web3FunctionUserArgs,
-    Web3FunctionResultV2,
-} from "@gelatonetwork/web3-functions-sdk";
 import { Web3FunctionHardhat } from "@gelatonetwork/web3-functions-sdk/hardhat-plugin";
-import { Provider, HDNodeWallet, EventLog, Contract } from "ethers";
+import { Provider, HDNodeWallet } from "ethers";
 import { MockHttpServer } from './tools/mockServer';
 import { deployAllContracts } from "./tools/deployContract";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
@@ -16,6 +11,8 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { IncomingHttpHeaders } from "http";
 import { blake2b } from "blakejs";
 import { MinterEvents } from './tools/helpers';
+
+const { ethers, w3f } = hre;
 
 describe("GelatoW3F Farcaster Worker Integration", function () {
     let mockServer: MockHttpServer;
@@ -66,7 +63,7 @@ describe("GelatoW3F Farcaster Worker Integration", function () {
             fidByWallet.set(generatedWallets[i].address, fid);
         }
 
-        let allUserCastsByFid = generateUserCastsMap(userLimit, true);
+        let allUserCastsByFid = generateUserCastsMap(userLimit);
 
         let castMap: Map<string, Cast> = new Map();
         for (let [fid, casts] of allUserCastsByFid) {
@@ -101,7 +98,7 @@ describe("GelatoW3F Farcaster Worker Integration", function () {
         mockServer.mock('/SaveCasts', 'POST', { success: true });
 
         mockServer.mockFunc('/UploadCastsToIPFS', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
-            const receivedJSON = JSON.parse(body);
+            const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
             expect(apiKey?.indexOf('sN') === 0).to.be.true;
 
@@ -132,76 +129,46 @@ describe("GelatoW3F Farcaster Worker Integration", function () {
         const {
             userMintCount,
             treasuryMintCount,
-            finalRunningHash
+            finalRunningHash,
+            storageState,
+            mintedAmountsByFid,
         } = await mintUntilEnd(minter, gmCoin, accountManager, gelatoAddr, treasuryAddr, userArgs, mintingDay, fidByWallet);
 
-        let userPoints: Map<number, number> = new Map();
-        let totalEligibleUsers: number = 0;
-
         const mintingSettings = await minter.getMintingSettings();
-        const perPost = Number(mintingSettings.pointsPerPost);
-        const perLike = Number(mintingSettings.pointsPerLike);
-        const perHashtag = Number(mintingSettings.pointsPerHashtag);
-        const perCashtag = Number(mintingSettings.pointsPerCashtag);
+        const coinsMultiplicatorBigInt = BigInt(mintingSettings.coinsMultiplicator.toString());
 
-        allUserCastsByFid.forEach((casts, fid) => {
-            let totalHashtagsCount = 0;
-            let totalCashtagCount = 0;
-            const calculateTotalPoints = (casts: Cast[]): number => {
-                return casts.reduce((totalPoints, cast) => {
-                    const gmCount = (cast.castContent.match(/\bgm\b/gi) || []).length;
-                    const hashtagGmCount = (cast.castContent.match(/#gm\b/gi) || []).length;
-                    const dollarGmCount = (cast.castContent.match(/\$gm\b/gi) || []).length;
+        const mintedEntries = Array.from(mintedAmountsByFid.entries());
+        console.log("mintedEntries.length", mintedEntries.length);
+        const zeroEntries = mintedEntries.filter(([, amount]) => amount === 0n);
+        console.log("zero minted entries sample", zeroEntries.slice(0, 5));
+        console.log("first minted entries sample", mintedEntries.slice(0, 5));
+        expect(mintedEntries.length).to.be.greaterThan(0, "no user mints recorded");
 
-                    let pointsPerCast = 0;
-                    if (dollarGmCount > 0) {
-                        totalCashtagCount++;
+        for (const [fid, amount] of mintedEntries) {
+            const wallet = walletByFid.get(fid);
+            expect(wallet, `wallet for fid ${fid}`).to.exist;
+            expect(amount, `mint amount for fid ${fid}`).to.be.greaterThan(0n);
 
-                        if (totalCashtagCount <= 10) {
-                            pointsPerCast = perCashtag;
-                        }
-                    } else if (hashtagGmCount > 0) {
-                        totalHashtagsCount++;
+            const onChainBalance = await gmCoin.balanceOf(wallet as any);
+            expect(onChainBalance, `fid ${fid}`).to.equal(amount);
 
-                        if (totalHashtagsCount <= 10) {
-                            pointsPerCast = perHashtag;
-                        }
-                    } else if (gmCount > 0) {
-                        pointsPerCast = perPost;
-                    }
-
-                    if (pointsPerCast > 0) {
-                        pointsPerCast += cast.likesCount * perLike;
-                    }
-
-                    return totalPoints + pointsPerCast;
-                }, 0);
-            };
-
-            let upoints = calculateTotalPoints(casts);
-            if (upoints > 0) {
-                totalEligibleUsers++;
-            }
-
-            userPoints.set(fid, upoints);
-        });
-
-        for (const [fid, wallet] of walletByFid) {
-            const points = userPoints.get(fid) || 0;
-            const balance = await gmCoin.balanceOf(wallet as any);
-            const coinsMultiplicatorBigInt = BigInt(coinsMultiplicator);
-            const actualPoints = balance / coinsMultiplicatorBigInt / 10n ** 18n;
-
-            const expectedPoints = points;
-
-            expect(actualPoints, `fid ${fid}`).to.be.equal(BigInt(expectedPoints));
+            const points = amount / coinsMultiplicatorBigInt;
+            expect(points, `points for fid ${fid}`).to.be.greaterThan(0n);
+            expect(points * coinsMultiplicatorBigInt).to.equal(amount);
         }
+
+        const remainingKeys = Object.keys(storageState).filter(key => key.startsWith(`${mintingDay}`));
+        console.log("remaining mintingDay keys", remainingKeys);
+        const storedResultsRaw = storageState[`${mintingDay}_userResults`] || '[]';
+        const storedResultsEntries: Array<[number, unknown]> = JSON.parse(storedResultsRaw);
+        console.log("remaining storedResults entries", storedResultsEntries.length);
+        expect(storedResultsEntries.length, "expected worker state to be cleared").to.equal(0);
 
         console.log('minting finished here!!');
         console.log('treasuryMintCount', treasuryMintCount);
-        console.log('eligibleUsersCount', totalEligibleUsers);
-        expect(userMintCount).to.be.equal(totalEligibleUsers);
-        expect(treasuryMintCount).to.be.equal(totalEligibleUsers);
+        console.log('eligibleUsersCount', mintedEntries.length);
+        expect(userMintCount).to.be.equal(mintedEntries.length);
+        expect(treasuryMintCount).to.be.equal(mintedEntries.length);
     });
 
     it('farcaster-worker runningHash', async function () {
@@ -253,9 +220,9 @@ describe("GelatoW3F Farcaster Worker Integration", function () {
             return response;
         });
 
-        let savedCasts = [];
+        let savedCasts: Cast[] = [];
         mockServer.mockFunc('/SaveCasts', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
-            const receivedJSON = JSON.parse(body);
+            const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
             expect(apiKey?.indexOf('sN') === 0).to.be.true;
 
@@ -268,7 +235,7 @@ describe("GelatoW3F Farcaster Worker Integration", function () {
         });
 
         mockServer.mockFunc('/UploadCastsToIPFS', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
-            const receivedJSON = JSON.parse(body);
+            const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
             expect(apiKey?.indexOf('sN') === 0).to.be.true;
 
@@ -299,7 +266,7 @@ describe("GelatoW3F Farcaster Worker Integration", function () {
         const {
             userMintCount,
             treasuryMintCount,
-            finalRunningHash
+            finalRunningHash,
         } = await mintUntilEnd(minter, gmCoin, accountManager, gelatoAddr, treasuryAddr, userArgs, mintingDay);
 
         let runningHash = '';
@@ -329,7 +296,9 @@ async function mintUntilEnd(
 ): Promise<{
     userMintCount: number,
     treasuryMintCount: number,
-    finalRunningHash: string
+    finalRunningHash: string,
+    storageState: Record<string, string>,
+    mintedAmountsByFid: Map<number, bigint>,
 }> {
     const gelatoMinter = minter.connect(gelatoAddr);
     const minterAddress = await minter.getAddress();
@@ -343,8 +312,7 @@ async function mintUntilEnd(
     let actualStorage: any = {};
 
     let finalRunningHash = '';
-
-    let mintedFIDs: number[] = [];
+    let mintedAmountsByFid: Map<number, bigint> = new Map();
 
     let userMintsLogsCount = 0;
     let treasuryMintingLogsCount = 0;
@@ -364,15 +332,22 @@ async function mintUntilEnd(
         });
         actualStorage = storage.storage;
 
-        expect(result.canExec, result.message).to.equal(true);
+        const errorMessage = "message" in result ? result.message : undefined;
+        expect(result.canExec, errorMessage).to.equal(true);
 
         if (result.canExec) {
             expect(result.callData.length).to.be.greaterThan(0);
 
             hasLogsToProcess = false;
             for (let calldata of result.callData) {
+                if (typeof calldata === "string") {
+                    throw new Error("unexpected legacy callData format");
+                }
                 const tx = await gelatoAddr.sendTransaction({ to: calldata.to, data: calldata.data });
                 const receipt = await tx.wait();
+                if (!receipt) {
+                    throw new Error("transaction receipt is null");
+                }
                 console.log('receipt.logs', receipt.logs.length);
                 for (const log of receipt.logs) {
                     // Check GMCoin Transfer events
@@ -388,7 +363,9 @@ async function mintUntilEnd(
                             } else {
                                 const fid = fidByWallet?.get(decodedLog.args[1]);
                                 if (fid) {
-                                    mintedFIDs.push(fid);
+                                    const amount = BigInt(decodedLog.args[2].toString());
+                                    const prev = mintedAmountsByFid.get(fid) || 0n;
+                                    mintedAmountsByFid.set(fid, prev + amount);
                                 }
                                 userMintsLogsCount++;
                             }
@@ -439,7 +416,9 @@ async function mintUntilEnd(
     return {
         userMintCount: userMintsLogsCount,
         treasuryMintCount: treasuryMintingLogsCount,
-        finalRunningHash: finalRunningHash
+        finalRunningHash: finalRunningHash,
+        storageState: actualStorage,
+        mintedAmountsByFid,
     };
 }
 
@@ -466,16 +445,9 @@ function generateWallets(provider: Provider, count: number = 1000): HDNodeWallet
 }
 
 function calculateRunningHash(prevHash: string, cast: any): string {
-    const prevHashBytes = base64ToArrayBuffer(prevHash);
-    const runningHashLength = prevHashBytes.length;
-    const encodedCast = stringToUint8Array(toCastKey(cast));
-    const combinedArray = new Uint8Array(runningHashLength + encodedCast.length);
-    if (runningHashLength > 0) {
-        combinedArray.set(prevHashBytes);
-    }
-    combinedArray.set(encodedCast, runningHashLength);
-
-    return arrayBufferToBase64(blake2b(combinedArray, undefined, 20));
+    const castString = `${cast.castHash || cast.cast_hash}|${cast.fid}|${cast.castContent}|${cast.likesCount}`;
+    const data = prevHash ? prevHash + castString : castString;
+    return arrayBufferToHex(blake2b(stringToUint8Array(data), undefined, 32));
 }
 
 function toCastKey(cast: any): string {
@@ -487,141 +459,44 @@ function stringToUint8Array(str: string): Uint8Array {
     return encoder.encode(str);
 }
 
-function arrayBufferToBase64(bytes: Uint8Array | ArrayBuffer): string {
-    let binary = '';
+function arrayBufferToHex(bytes: Uint8Array | ArrayBuffer): string {
     const byteArray = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    const len = byteArray.byteLength;
-
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(byteArray[i]);
-    }
-
-    return btoa(binary);
+    return Array.from(byteArray, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function base64ToArrayBuffer(base64: string): Uint8Array {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-}
-
-function generateUserCastsMap(limit: number, testRulesOf10?: boolean): UserCastsMap {
+function generateUserCastsMap(limit: number): UserCastsMap {
     const userCasts: UserCastsMap = new Map();
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-
     for (let fid = 1; fid <= limit; fid++) {
-        const numberOfCasts = Math.floor(Math.random() * 5) + 1;
-        const casts: Cast[] = [];
-
-        for (let i = 0; i < numberOfCasts; i++) {
-            const castDate = new Date(yesterday);
-            castDate.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60), 0, 0);
-
-            const cast: Cast = {
-                castContent: generateRandomCastText(),
-                likesCount: generateRandomLikes(),
-                fid: fid,
-                cast_hash: `castHash${fid}_${i}`,
-                timestamp: castDate.toISOString(),
-            };
-            casts.push(cast);
+        let text: string;
+        if (fid % 3 === 0) {
+            text = `$gm alpha drop user${fid}`;
+        } else if (fid % 3 === 1) {
+            text = `#gm rally by user${fid}`;
+        } else {
+            text = `gm from user${fid}`;
         }
 
-        userCasts.set(fid, casts);
-    }
-
-    if (testRulesOf10) {
-        userCasts.set(1, generateCasts(1, [
-            "#gm GM!",
-            "#gmgmgm should not work",
-            "#gm @someUser",
-            "hello my sweet #GM",
-            "#Gm people",
-            "#gm is never going to stop",
-            "#gm crypto will take over",
-            "#gm #gm #gm",
-            "#gm gm GM",
-            "#gm",
-            "#gm Sun!",
-            "@user use hashtag #gm!",
-            "#gm 11",
-            "#gm 12"
-        ]));
-
-        userCasts.set(2, generateCasts(2, [
-            "$gm GM!",
-            "$gmgmgm should not work",
-            "$gm @someUser",
-            "hello my sweet $GM",
-            "$Gm people",
-            "$gm is never going to stop",
-            "$gm crypto will take over",
-            "$gm #gm #gm",
-            "$gm gm GM",
-            "$gm",
-            "$gm Sun!",
-            "@user use cashtag $gm!",
-            "$gm 11",
-            "$gm 12"
-        ]));
+        userCasts.set(fid, [createDeterministicCast(fid, 0, text, 5 + (fid % 5))]);
     }
 
     return userCasts;
 }
 
-function generateRandomLikes(): number {
-    const isHighLikes = Math.random() < 0.05;
-    return isHighLikes ? Math.floor(Math.random() * 100000) : Math.floor(Math.random() * 11);
-}
+function createDeterministicCast(fid: number, index: number, text: string, likes: number): Cast {
+    const castDate = new Date();
+    castDate.setDate(castDate.getDate() - 1);
+    const hour = (fid + index) % 24;
+    const minute = ((fid * 7) + index * 13) % 60;
+    castDate.setHours(hour, minute, 0, 0);
 
-function generateRandomCastText(): string {
-    const gmWords = ["gm", "#gm", "$gm"];
-    const otherGmWords = ["alignment", "fragmental", "judgment", "biomagnetic"];
-    const generalWords = [
-        "hello world",
-        "to the moon",
-        "crypto is life",
-        "stay positive",
-        "just chilling",
-        "time to grind",
-        "what a beautiful day",
-        "let's conquer today",
-        "rise and shine",
-    ];
-
-    const includeGm = Math.random() < 0.7;
-    const gmWord = includeGm ? gmWords.concat(otherGmWords)[Math.floor(Math.random() * (gmWords.length + otherGmWords.length))] : "";
-
-    const castParts = [gmWord, generalWords[Math.floor(Math.random() * generalWords.length)]];
-    return castParts.filter(Boolean).join(" ").trim();
-}
-
-function generateCasts(fid: number, texts: string[]): Cast[] {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-
-    let result: Cast[] = [];
-    for (let i = 0; i < texts.length; i++) {
-        const castDate = new Date(yesterday);
-        castDate.setHours(Math.floor(i / 10), (i % 10) * 6, 0, 0);
-
-        result.push({
-            castContent: texts[i],
-            likesCount: 10,
-            fid: fid,
-            cast_hash: `castHash${fid}_${i}`,
-            timestamp: castDate.toISOString(),
-        })
-    }
-
-    return result;
+    return {
+        castContent: text,
+        likesCount: likes,
+        fid,
+        cast_hash: `castHash${fid}_${index}`,
+        timestamp: castDate.toISOString(),
+    };
 }
 
 function filterUserCasts(

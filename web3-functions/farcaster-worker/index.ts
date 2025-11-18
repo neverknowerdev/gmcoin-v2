@@ -477,12 +477,31 @@ function findKeywordWithPrefix(text: string): string {
     return foundWord;
 }
 
+type CachedMintingSettings = {
+    pointsPerPost: string;
+    pointsPerLike: string;
+    pointsPerHashtag: string;
+    pointsPerCashtag: string;
+    coinsMultiplicator: string;
+};
+
 async function fetchMintingSettings(minterContract: Contract, storage: Storage, logger: CloudwatchLogger): Promise<MintingSettings> {
     // Check cache first
     const cached = await storage.getMintingSettings();
     if (cached) {
-        logger.info('Using cached minting settings');
-        return JSON.parse(cached) as MintingSettings;
+        try {
+            const parsed = JSON.parse(cached) as CachedMintingSettings;
+            logger.info('Using cached minting settings');
+            return {
+                pointsPerPost: BigInt(parsed.pointsPerPost),
+                pointsPerLike: BigInt(parsed.pointsPerLike),
+                pointsPerHashtag: BigInt(parsed.pointsPerHashtag),
+                pointsPerCashtag: BigInt(parsed.pointsPerCashtag),
+                coinsMultiplicator: BigInt(parsed.coinsMultiplicator),
+            };
+        } catch (error) {
+            logger.warn(`Failed to parse cached minting settings: ${error}`);
+        }
     }
 
     // Fetch from contract if not cached
@@ -496,8 +515,16 @@ async function fetchMintingSettings(minterContract: Contract, storage: Storage, 
         coinsMultiplicator: BigInt(coinsMultiplicator),
     };
     
+    const cachePayload: CachedMintingSettings = {
+        pointsPerPost: settings.pointsPerPost.toString(),
+        pointsPerLike: settings.pointsPerLike.toString(),
+        pointsPerHashtag: settings.pointsPerHashtag.toString(),
+        pointsPerCashtag: settings.pointsPerCashtag.toString(),
+        coinsMultiplicator: settings.coinsMultiplicator.toString(),
+    };
+
     // Cache for future runs of this mintingDay
-    await storage.saveMintingSettings(JSON.stringify(settings));
+    await storage.saveMintingSettings(JSON.stringify(cachePayload));
     return settings;
 }
 

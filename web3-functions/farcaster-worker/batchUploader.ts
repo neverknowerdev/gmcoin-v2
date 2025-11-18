@@ -108,7 +108,7 @@ export class BatchUploader {
             });
 
             // Parse the JSON response
-            const responseData = await response.json();
+            const responseData = await response.json() as { success?: boolean };
             if (responseData.success == true) {
                 return true;
             }
@@ -161,12 +161,12 @@ function calculateRunningHash(currentHash: string, cast: Cast): string {
     
     // If this is the first hash, start with the cast string
     if (!currentHash || currentHash === '') {
-        const hash = blake2b(stringToUint8Array(castString), null, 32);
+        const hash = blake2b(stringToUint8Array(castString), undefined, 32);
         return arrayBufferToHex(hash);
     }
     
     // Combine current hash with new cast data
     const combinedString = currentHash + castString;
-    const hash = blake2b(stringToUint8Array(combinedString), null, 32);
+    const hash = blake2b(stringToUint8Array(combinedString), undefined, 32);
     return arrayBufferToHex(hash);
 }
