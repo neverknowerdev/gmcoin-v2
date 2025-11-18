@@ -202,7 +202,7 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
         let UserResults = await storage.loadUserResults();
 
         let tweetsToVerify: Tweet[] = await storage.getTweetsToVerify();
-        const mintingSettings = await fetchMintingSettings(minterContract, logger);
+        const mintingSettings = await fetchMintingSettings(minterContract, storage, logger);
 
         if (batchesToProcess.length > 0) { // process batches
             logger.info(`Processing`, batchesToProcess.length, `batches`);
@@ -542,27 +542,28 @@ function findKeywordWithPrefix(text: string): string {
     return foundWord;
 }
 
-async function fetchMintingSettings(minterContract: Contract, logger: CloudwatchLogger): Promise<MintingSettings> {
-    try {
-        const [pointsPerPost, pointsPerLike, pointsPerHashtag, pointsPerCashtag, coinsMultiplicator] = await minterContract.getMintingSettings();
-        return {
-            pointsPerPost: BigInt(pointsPerPost),
-            pointsPerLike: BigInt(pointsPerLike),
-            pointsPerHashtag: BigInt(pointsPerHashtag),
-            pointsPerCashtag: BigInt(pointsPerCashtag),
-            coinsMultiplicator: BigInt(coinsMultiplicator),
-        };
-    } catch (error) {
-        logger.warn(`Failed to fetch minting settings from minter: ${error}`);
-        const defaultMultiplicator = 100n * 10n ** 18n;
-        return {
-            pointsPerPost: 1n,
-            pointsPerLike: 1n,
-            pointsPerHashtag: 3n,
-            pointsPerCashtag: 5n,
-            coinsMultiplicator: defaultMultiplicator,
-        };
+async function fetchMintingSettings(minterContract: Contract, storage: Storage, logger: CloudwatchLogger): Promise<MintingSettings> {
+    // Check cache first
+    const cached = await storage.getMintingSettings();
+    if (cached) {
+        logger.info('Using cached minting settings');
+        return JSON.parse(cached) as MintingSettings;
     }
+
+    // Fetch from contract if not cached
+    logger.info('Fetching minting settings from contract');
+    const [pointsPerPost, pointsPerLike, pointsPerHashtag, pointsPerCashtag, coinsMultiplicator] = await minterContract.getMintingSettings();
+    const settings: MintingSettings = {
+        pointsPerPost: BigInt(pointsPerPost),
+        pointsPerLike: BigInt(pointsPerLike),
+        pointsPerHashtag: BigInt(pointsPerHashtag),
+        pointsPerCashtag: BigInt(pointsPerCashtag),
+        coinsMultiplicator: BigInt(coinsMultiplicator),
+    };
+    
+    // Cache for future runs of this mintingDay
+    await storage.saveMintingSettings(JSON.stringify(settings));
+    return settings;
 }
 
 function buildMintPayload(

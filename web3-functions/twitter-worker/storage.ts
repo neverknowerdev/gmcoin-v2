@@ -104,4 +104,12 @@ export class Storage {
         const array = Array.from(map.entries());
         await this.storage.set(`${this.mintingDayTimestamp}${Storage.ACCOUNT_INFO_KEY_SUFFIX}`, JSON.stringify(array));
     }
+
+    async getMintingSettings(): Promise<string | undefined> {
+        return await this.storage.get(`${this.mintingDayTimestamp}_mintingSettings`);
+    }
+
+    async saveMintingSettings(settings: string) {
+        await this.storage.set(`${this.mintingDayTimestamp}_mintingSettings`, settings);
+    }
 }
