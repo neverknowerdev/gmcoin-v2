@@ -7,7 +7,6 @@ import { MockHttpServer } from './tools/mockServer';
 import { deployAllContracts } from "./tools/deployContract";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import * as url from 'url';
-import fs from "fs";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { IncomingHttpHeaders } from "http";
 import { blake2b } from "blakejs";
@@ -118,7 +117,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
             const idList = url.query["user_ids"] as string;
             const userIDs = idList.split(',');
 
-            let response = { data: { users: [] } };
+            let response: { data: { users: Array<{ result: { core: { screen_name: string } }; rest_id: string }> } } = { data: { users: [] } };
             for (const userID of userIDs) {
                 response.data.users.push({
                     result: {
@@ -302,7 +301,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
             const idList = url.query["user_ids"] as string;
             const userIDs = idList.split(',');
 
-            let response = { data: { users: [] } };
+            let response: { data: { users: Array<{ result: { core: { screen_name: string } }; rest_id: string }> } } = { data: { users: [] } };
             for (const userID of userIDs) {
                 response.data.users.push({
                     result: {
@@ -317,7 +316,7 @@ describe("GelatoW3F Twitter Worker Integration", function () {
             return response;
         });
 
-        let savedTweets = [];
+        let savedTweets: any[] = [];
         mockServer.mockFunc('/SaveTweets', 'POST', (url: url.UrlWithParsedQuery, headers: IncomingHttpHeaders, body: any) => {
             const receivedJSON = typeof body === "string" ? JSON.parse(body) : body;
             const apiKey = headers.authorization;
@@ -431,15 +430,22 @@ async function mintUntilEnd(
         });
         actualStorage = storage.storage;
 
-        expect(result.canExec, result.message).to.equal(true);
+        const errorMessage = "message" in result ? result.message : undefined;
+        expect(result.canExec, errorMessage).to.equal(true);
 
         if (result.canExec) {
             expect(result.callData.length).to.be.greaterThan(0);
 
             hasLogsToProcess = false;
             for (let calldata of result.callData) {
+                if (typeof calldata === "string") {
+                    throw new Error("unexpected legacy callData format");
+                }
                 const tx = await gelatoAddr.sendTransaction({ to: calldata.to, data: calldata.data });
                 const receipt = await tx.wait();
+                if (!receipt) {
+                    throw new Error("transaction receipt is null");
+                }
                 console.log('receipt.logs', receipt.logs.length);
                 for (const log of receipt.logs) {
                     // Check GMCoin Transfer events
