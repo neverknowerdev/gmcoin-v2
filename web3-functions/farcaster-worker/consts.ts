@@ -1,83 +1,6 @@
-import { forEach } from "lodash";
+export { MinterABI, GMCoinABI, Platform, MintingSettings } from "../twitter-worker/consts";
 
-export const ContractABI = [
-    {
-        "inputs": [
-            {
-                "components": [
-                    {
-                        "internalType": "uint64",
-                        "name": "userIndex",
-                        "type": "uint64"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "casts",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "hashtagCasts",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "cashtagCasts",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "simpleCasts",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint32",
-                        "name": "likes",
-                        "type": "uint32"
-                    }
-                ],
-                "internalType": "struct GMStorage.UserFarcasterData[]",
-                "name": "userData",
-                "type": "tuple[]"
-            },
-            {
-                "internalType": "uint32",
-                "name": "mintingDayTimestamp",
-                "type": "uint32"
-            },
-            {
-                "components": [
-                    {
-                        "internalType": "uint64",
-                        "name": "startIndex",
-                        "type": "uint64"
-                    },
-                    {
-                        "internalType": "uint64",
-                        "name": "endIndex",
-                        "type": "uint64"
-                    },
-                    {
-                        "internalType": "string",
-                        "name": "nextCursor",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "uint8",
-                        "name": "errorCount",
-                        "type": "uint8"
-                    }
-                ],
-                "internalType": "struct GMStorage.Batch[]",
-                "name": "batches",
-                "type": "tuple[]"
-            }
-        ],
-        "name": "mintCoinsForFarcasterUsers",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
+export const AccountManagerABI = [
     {
         "inputs": [
             {
@@ -91,148 +14,29 @@ export const ContractABI = [
                 "type": "uint16"
             }
         ],
-        "name": "getFarcasterUsers",
+        "name": "getFarcasterAccountsInfo",
         "outputs": [
-            {
-                "internalType": "uint256[]",
-                "name": "",
-                "type": "uint256[]"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "uint32",
-                "name": "mintingDayTimestamp",
-                "type": "uint32"
-            },
             {
                 "components": [
                     {
-                        "internalType": "uint64",
-                        "name": "startIndex",
-                        "type": "uint64"
+                        "internalType": "address",
+                        "name": "wallet",
+                        "type": "address"
                     },
                     {
-                        "internalType": "uint64",
-                        "name": "endIndex",
-                        "type": "uint64"
+                        "internalType": "uint256",
+                        "name": "accountId",
+                        "type": "uint256"
                     },
                     {
-                        "internalType": "string",
-                        "name": "nextCursor",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "uint8",
-                        "name": "errorCount",
-                        "type": "uint8"
+                        "internalType": "uint256",
+                        "name": "userId",
+                        "type": "uint256"
                     }
                 ],
-                "indexed": false,
-                "internalType": "struct GMStorage.Batch[]",
-                "name": "batches",
-                "type": "tuple[]"
-            }
-        ],
-        "name": "farcasterMintingProcessed",
-        "type": "event"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint32",
-                "name": "mintingDayTimestamp",
-                "type": "uint32"
-            },
-            {
-                "components": [
-                    {
-                        "internalType": "uint64",
-                        "name": "startIndex",
-                        "type": "uint64"
-                    },
-                    {
-                        "internalType": "uint64",
-                        "name": "endIndex",
-                        "type": "uint64"
-                    },
-                    {
-                        "internalType": "string",
-                        "name": "nextCursor",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "uint8",
-                        "name": "errorCount",
-                        "type": "uint8"
-                    }
-                ],
-                "internalType": "struct GMStorage.Batch[]",
-                "name": "batches",
-                "type": "tuple[]"
-            }
-        ],
-        "name": "logFarcasterErrorBatches",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint32",
-                "name": "mintingDayTimestamp",
-                "type": "uint32"
-            },
-            {
-                "internalType": "string",
-                "name": "runningHash",
-                "type": "string"
-            }
-        ],
-        "name": "finishFarcasterMinting",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "totalFarcasterUsersCount",
-        "outputs": [
-            {
-                "internalType": "uint256",
+                "internalType": "struct AccountManager.UserAccountInfo[]",
                 "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint64",
-                "name": "start",
-                "type": "uint64"
-            },
-            {
-                "internalType": "uint16",
-                "name": "count",
-                "type": "uint16"
-            }
-        ],
-        "name": "getFarcasterUsers",
-        "outputs": [
-            {
-                "internalType": "uint256[]",
-                "name": "",
-                "type": "uint256[]"
+                "type": "tuple[]"
             }
         ],
         "stateMutability": "view",
@@ -385,3 +189,14 @@ export const defaultResult: Result = {
     casts: 0,
     likes: 0,
 };
+
+export interface FarcasterAccountInfo {
+    fid: string;
+    userId: string;
+    primaryWallet: string;
+}
+
+export interface FarcasterAccountWithUsername extends FarcasterAccountInfo {
+    username: string;
+    userIndex?: number;
+}

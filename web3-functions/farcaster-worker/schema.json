@@ -4,7 +4,9 @@
   "memory": 512,
   "timeout": 300,
   "userArgs": {
-    "contractAddress": "string",
+    "minterAddress": "string",
+    "accountManagerAddress": "string",
+    "gmCoinAddress": "string",
     "concurrencyLimit": "number", 
     "serverURLPrefix": "string",
     "neynarFeedURL": "string"

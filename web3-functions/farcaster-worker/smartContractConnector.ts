@@ -1,61 +1,72 @@
-import { Contract, ContractRunner } from "ethers";
+import { Contract } from "ethers";
 import { Storage } from "./storage";
-import { FarcasterRequester } from "./farcasterRequester";
 import { Logger } from "../twitter-worker/cloudwatch";
+import { FarcasterAccountWithUsername } from "./consts";
+
+const ACCOUNT_FETCH_LIMIT = 1000;
 
 export class SmartContractConnector {
-    private provider: ContractRunner;
-    private smartContract: Contract;
+    private accountManager: Contract;
     private storage: Storage;
     private logger: Logger;
 
-    constructor(provider: ContractRunner, smartContract: Contract, storage: Storage, logger: Logger) {
-        this.provider = provider;
-        this.smartContract = smartContract;
+    constructor(accountManager: Contract, storage: Storage, logger: Logger) {
+        this.accountManager = accountManager;
         this.storage = storage;
         this.logger = logger;
     }
 
-    async getNextFIDs(startIndex: number, count: number): Promise<number[]> {
-        try {
-            // Check if we've already fetched the last user index to avoid redundant calls
-            const isFetchedLastUserIndex = await this.storage.getIsFetchedLastUserIndex();
-            if (isFetchedLastUserIndex) {
-                const remainingFIDs = await this.storage.getRemainingFIDs();
-                this.logger.info(`getNextFIDs from storage`, remainingFIDs.length);
-                return remainingFIDs;
-            }
+    async getNextAccounts(startIndex: number, minRecords: number): Promise<FarcasterAccountWithUsername[]> {
+        let accounts = await this.storage.getRemainingAccounts();
 
-            this.logger.info(`getNextFIDs from smart contract`, startIndex, count);
-            
-            // Get total count of Farcaster users
-            const totalCount = await this.smartContract.totalFarcasterUsersCount();
-            this.logger.info(`totalFarcasterUsersCount`, totalCount);
-
-            if (startIndex >= totalCount) {
-                await this.storage.setIsFetchedLastUserIndex(true);
-                await this.storage.saveRemainingFIDs([]);
-                return [];
-            }
-
-            const actualCount = Math.min(count, Number(totalCount) - startIndex);
-            this.logger.info(`getFarcasterUsers`, startIndex, actualCount);
-
-            // Fetch FIDs from smart contract
-            const fidStrings = await this.smartContract.getFarcasterUsers(startIndex, actualCount);
-            const fids: number[] = fidStrings.map((fidStr: string) => parseInt(fidStr));
-
-            this.logger.info(`getFarcasterUsers result`, fids.length, fids);
-
-            if (startIndex + actualCount >= totalCount) {
-                await this.storage.setIsFetchedLastUserIndex(true);
-            }
-
-            await this.storage.saveRemainingFIDs(fids);
-            return fids;
-        } catch (error) {
-            this.logger.error('Error in getNextFIDs:', error);
-            throw error;
+        if (accounts.length >= minRecords) {
+            return accounts;
         }
+
+        const isFetchedLastUser = await this.storage.getIsFetchedLastUserIndex();
+        if (isFetchedLastUser) {
+            return accounts;
+        }
+
+        this.logger.info(
+            "fetching new Farcaster accounts from AccountManager",
+            startIndex,
+            ACCOUNT_FETCH_LIMIT
+        );
+
+        const rawAccounts = await this.accountManager.getFarcasterAccountsInfo(
+            startIndex,
+            ACCOUNT_FETCH_LIMIT
+        );
+
+        if (rawAccounts.length === 0) {
+            await this.storage.setIsFetchedLastUserIndex(true);
+            return accounts;
+        }
+
+        const enrichedAccounts: FarcasterAccountWithUsername[] = [];
+        for (const info of rawAccounts) {
+            const wallet = info.wallet as string;
+            if (!wallet || wallet === "0x0000000000000000000000000000000000000000") {
+                this.logger.warn(`Skipping Farcaster account ${info.accountId} due to missing wallet`);
+                continue;
+            }
+            enrichedAccounts.push({
+                fid: info.accountId.toString(),
+                userId: info.userId.toString(),
+                primaryWallet: wallet,
+                username: "",
+            });
+        }
+
+        accounts = accounts.concat(enrichedAccounts);
+
+        await this.storage.saveRemainingAccounts(accounts);
+
+        if (rawAccounts.length < ACCOUNT_FETCH_LIMIT) {
+            await this.storage.setIsFetchedLastUserIndex(true);
+        }
+
+        return accounts;
     }
 }

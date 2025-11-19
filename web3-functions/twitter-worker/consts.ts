@@ -1,44 +1,22 @@
-import {forEach} from "lodash";
+import { forEach } from "lodash";
 
-export const ContractABI = [
+export enum Platform {
+    Twitter = 0,
+    Farcaster = 1,
+}
+
+export const MinterABI = [
     {
         "inputs": [
             {
-                "components": [
-                    {
-                        "internalType": "uint64",
-                        "name": "userIndex",
-                        "type": "uint64"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "tweets",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "hashtagTweets",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "cashtagTweets",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "simpleTweets",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "uint32",
-                        "name": "likes",
-                        "type": "uint32"
-                    }
-                ],
-                "internalType": "struct GMTwitterOracle.UserTwitterData[]",
-                "name": "userData",
-                "type": "tuple[]"
+                "internalType": "uint8",
+                "name": "platform",
+                "type": "uint8"
+            },
+            {
+                "internalType": "uint256",
+                "name": "userPoints",
+                "type": "uint256"
             },
             {
                 "internalType": "uint32",
@@ -68,12 +46,12 @@ export const ContractABI = [
                         "type": "uint8"
                     }
                 ],
-                "internalType": "struct GMTwitterOracle.Batch[]",
+                "internalType": "struct Minter.Batch[]",
                 "name": "batches",
                 "type": "tuple[]"
             }
         ],
-        "name": "mintCoinsForTwitterUsers",
+        "name": "processMintingBatches",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -81,22 +59,99 @@ export const ContractABI = [
     {
         "inputs": [
             {
-                "internalType": "uint64",
-                "name": "start",
-                "type": "uint64"
+                "internalType": "uint8",
+                "name": "platform",
+                "type": "uint8"
             },
             {
-                "internalType": "uint16",
-                "name": "count",
-                "type": "uint16"
+                "internalType": "uint32",
+                "name": "mintingDayTimestamp",
+                "type": "uint32"
+            },
+            {
+                "components": [
+                    {
+                        "internalType": "uint64",
+                        "name": "startIndex",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint64",
+                        "name": "endIndex",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "nextCursor",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "uint8",
+                        "name": "errorCount",
+                        "type": "uint8"
+                    }
+                ],
+                "internalType": "struct Minter.Batch[]",
+                "name": "batches",
+                "type": "tuple[]"
             }
         ],
-        "name": "getTwitterUsers",
+        "name": "logErrorBatches",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "platform",
+                "type": "uint8"
+            },
+            {
+                "internalType": "uint32",
+                "name": "mintingDayTimestamp",
+                "type": "uint32"
+            },
+            {
+                "internalType": "string",
+                "name": "runningHash",
+                "type": "string"
+            }
+        ],
+        "name": "finishMinting",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getMintingSettings",
         "outputs": [
             {
-                "internalType": "string[]",
-                "name": "",
-                "type": "string[]"
+                "internalType": "uint256",
+                "name": "pointsPerPost",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "pointsPerLike",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "pointsPerHashtag",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "pointsPerCashtag",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "coinsMultiplicator",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -105,6 +160,12 @@ export const ContractABI = [
     {
         "anonymous": false,
         "inputs": [
+            {
+                "indexed": true,
+                "internalType": "uint8",
+                "name": "platform",
+                "type": "uint8"
+            },
             {
                 "indexed": true,
                 "internalType": "uint32",
@@ -135,77 +196,80 @@ export const ContractABI = [
                     }
                 ],
                 "indexed": false,
-                "internalType": "struct GMTwitterOracle.Batch[]",
+                "internalType": "struct Minter.Batch[]",
                 "name": "batches",
                 "type": "tuple[]"
             }
         ],
-        "name": "twitterMintingProcessed",
+        "name": "MintingProcessed",
         "type": "event"
-    },
+    }
+];
+
+export const AccountManagerABI = [
     {
         "inputs": [
             {
-                "internalType": "uint32",
-                "name": "mintingDayTimestamp",
-                "type": "uint32"
+                "internalType": "uint64",
+                "name": "start",
+                "type": "uint64"
             },
+            {
+                "internalType": "uint16",
+                "name": "count",
+                "type": "uint16"
+            }
+        ],
+        "name": "getTwitterAcoountsInfo",
+        "outputs": [
             {
                 "components": [
                     {
-                        "internalType": "uint64",
-                        "name": "startIndex",
-                        "type": "uint64"
+                        "internalType": "address",
+                        "name": "wallet",
+                        "type": "address"
                     },
                     {
-                        "internalType": "uint64",
-                        "name": "endIndex",
-                        "type": "uint64"
+                        "internalType": "uint256",
+                        "name": "accountId",
+                        "type": "uint256"
                     },
                     {
-                        "internalType": "string",
-                        "name": "nextCursor",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "uint8",
-                        "name": "errorCount",
-                        "type": "uint8"
+                        "internalType": "uint256",
+                        "name": "userId",
+                        "type": "uint256"
                     }
                 ],
-                "internalType": "struct GMTwitterOracle.Batch[]",
-                "name": "batches",
+                "internalType": "struct AccountManager.UserAccountInfo[]",
+                "name": "",
                 "type": "tuple[]"
             }
         ],
-        "name": "logErrorBatches",
-        "outputs": [],
-        "stateMutability": "nonpayable",
+        "stateMutability": "view",
         "type": "function"
-    },
+    }
+];
+
+export const GMCoinABI = [
     {
         "inputs": [
             {
-                "internalType": "uint32",
-                "name": "mintingDayTimestamp",
-                "type": "uint32"
+                "internalType": "address[]",
+                "name": "to",
+                "type": "address[]"
             },
             {
-                "internalType": "string",
-                "name": "runningHash",
-                "type": "string"
+                "internalType": "uint256[]",
+                "name": "amounts",
+                "type": "uint256[]"
             }
         ],
-        "name": "finishMinting",
+        "name": "mintFromGelatoW3F",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
-    },
-
+    }
 ];
-
-// tweetID, userID, tweetContent, likesCount, points
-export type TweetTuple = [tweetID: number, userID: number, tweetContent: string, likesCount: number, points: number];
 
 export interface Batch {
     startIndex: number;
@@ -334,3 +398,22 @@ export const defaultResult: Result = {
     tweets: 0,
     likes: 0,
 };
+
+export interface TwitterAccountInfo {
+    twitterId: string;
+    userId: string;
+    primaryWallet: string;
+}
+
+export interface TwitterAccountWithUsername extends TwitterAccountInfo {
+    username: string;
+    userIndex?: number;
+}
+
+export interface MintingSettings {
+    pointsPerPost: bigint;
+    pointsPerLike: bigint;
+    pointsPerHashtag: bigint;
+    pointsPerCashtag: bigint;
+    coinsMultiplicator: bigint;
+}

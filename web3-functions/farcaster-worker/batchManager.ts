@@ -1,4 +1,4 @@
-import { Batch } from "./consts";
+import { Batch, FarcasterAccountWithUsername } from "./consts";
 import { Storage } from "./storage";
 import { SmartContractConnector } from "./smartContractConnector";
 import { FarcasterRequester } from "./farcasterRequester";
@@ -15,6 +15,7 @@ export class BatchManager {
     private logger: Logger;
     private fidBatches: number[][] = [];
     private userIndexByFID: Map<number, number> = new Map();
+    private accountInfoByUserIndex: Map<number, FarcasterAccountWithUsername> = new Map();
 
     constructor(logger: Logger, storage: Storage, contractConnector: SmartContractConnector, mintingDayTimestamp: number, concurrencyLimit: number) {
         this.storage = storage;
@@ -27,7 +28,8 @@ export class BatchManager {
     async generateNewBatches(requester: FarcasterRequester, mintingDayTimestamp: number, batches: Batch[]): Promise<{
         batchesToProcess: Batch[];
         fidBatches: number[][];
-        userIndexByFID: Map<number, number>
+        userIndexByFID: Map<number, number>;
+        accountInfoByUserIndex: Map<number, FarcasterAccountWithUsername>;
     }> {
         // Skip already done batches: nextCursor == '' && errorCount == 0
         batches = batches.filter(batch => !(batch.nextCursor == '' && batch.errorCount == 0))
@@ -38,11 +40,12 @@ export class BatchManager {
             const cur = batches[i];
 
             // Cache FIDs for batches
-            const batchFIDs = await this.storage.getFIDsForBatch(cur.startIndex, cur.endIndex);
+            const batchAccounts = await this.storage.getAccountsForBatch(cur.startIndex, cur.endIndex);
+            const batchFIDs = batchAccounts.map((account) => parseInt(account.fid));
             this.logger.info(`batchFIDs`, batchFIDs.length, batchFIDs);
 
             this.fidBatches.push(batchFIDs);
-            fillUserIndexByFIDs(this.logger, this.userIndexByFID, batchFIDs, cur.startIndex);
+            fillUserIndexByFIDs(this.logger, this.userIndexByFID, this.accountInfoByUserIndex, batchAccounts, cur.startIndex);
         }
 
         if (batches.length < this.concurrencyLimit) {
@@ -51,17 +54,18 @@ export class BatchManager {
             let startIndex = maxEndIndex;
 
             this.logger.info(`generateNewBatches`, newBatchesCount);
-            let remainingFIDs = await this.contractConnector.getNextFIDs(startIndex, newBatchesCount * MAX_FIDS_PER_BATCH);
-            this.logger.info(`remainingFIDs fetched from smart-contract`, remainingFIDs.length, remainingFIDs);
+            let remainingAccounts = await this.contractConnector.getNextAccounts(startIndex, newBatchesCount * MAX_FIDS_PER_BATCH);
+            this.logger.info(`remainingAccounts fetched from smart-contract`, remainingAccounts.length, remainingAccounts);
 
             for (let i = 0; i < newBatchesCount; i++) {
-                if (remainingFIDs.length == 0) {
+                if (remainingAccounts.length == 0) {
                     break;
                 }
 
-                this.logger.info(`generateNewBatches`, i, remainingFIDs.length);
+                this.logger.info(`generateNewBatches`, i, remainingAccounts.length);
 
-                const { fidBatch, recordInsertedCount } = createFIDBatch(remainingFIDs, MAX_FIDS_PER_BATCH);
+                const { accountBatch, recordInsertedCount } = createAccountBatch(remainingAccounts, MAX_FIDS_PER_BATCH);
+                const fidBatch = accountBatch.map((account) => parseInt(account.fid));
 
                 if (recordInsertedCount == 0) {
                     break;
@@ -70,9 +74,9 @@ export class BatchManager {
                 this.fidBatches.push(fidBatch);
 
                 const endIndex = startIndex + recordInsertedCount;
-                fillUserIndexByFIDs(this.logger, this.userIndexByFID, fidBatch, startIndex);
+                fillUserIndexByFIDs(this.logger, this.userIndexByFID, this.accountInfoByUserIndex, accountBatch, startIndex);
 
-                await this.storage.setFIDsForBatch(startIndex, endIndex, fidBatch);
+                await this.storage.setAccountsForBatch(startIndex, endIndex, accountBatch);
 
                 const newBatch: Batch = {
                     startIndex: startIndex,
@@ -84,42 +88,54 @@ export class BatchManager {
                 batches.push(newBatch);
                 startIndex = endIndex;
 
-                remainingFIDs = remainingFIDs.slice(recordInsertedCount);
+                remainingAccounts = remainingAccounts.slice(recordInsertedCount);
             }
 
-            await this.storage.saveMaxEndIndex(startIndex);
+            await this.storage.saveRemainingAccounts(remainingAccounts);
         }
 
         return Promise.resolve({
             batchesToProcess: batches,
             fidBatches: this.fidBatches,
-            userIndexByFID: this.userIndexByFID
+            userIndexByFID: this.userIndexByFID,
+            accountInfoByUserIndex: this.accountInfoByUserIndex
         });
     }
 }
 
-function createFIDBatch(fids: number[], maxBatchSize: number): {
-    fidBatch: number[];
+function createAccountBatch(accounts: FarcasterAccountWithUsername[], maxBatchSize: number): {
+    accountBatch: FarcasterAccountWithUsername[];
     recordInsertedCount: number;
 } {
-    const fidBatch: number[] = [];
+    const accountBatch: FarcasterAccountWithUsername[] = [];
     let count = 0;
 
-    for (let i = 0; i < fids.length && count < maxBatchSize; i++) {
-        fidBatch.push(fids[i]);
+    for (let i = 0; i < accounts.length && count < maxBatchSize; i++) {
+        accountBatch.push(accounts[i]);
         count++;
     }
 
     return {
-        fidBatch,
+        accountBatch,
         recordInsertedCount: count
     };
 }
 
-function fillUserIndexByFIDs(logger: Logger, userIndexByFID: Map<number, number>, fids: number[], startIndex: number) {
-    for (let i = 0; i < fids.length; i++) {
+function fillUserIndexByFIDs(
+    logger: Logger,
+    userIndexByFID: Map<number, number>,
+    accountInfoByUserIndex: Map<number, FarcasterAccountWithUsername>,
+    accounts: FarcasterAccountWithUsername[],
+    startIndex: number
+) {
+    for (let i = 0; i < accounts.length; i++) {
         const userIndex = startIndex + i;
-        userIndexByFID.set(fids[i], userIndex);
-        logger.info(`userIndexByFID.set(${fids[i]}, ${userIndex})`);
+        const fid = parseInt(accounts[i].fid);
+        userIndexByFID.set(fid, userIndex);
+        accountInfoByUserIndex.set(userIndex, {
+            ...accounts[i],
+            userIndex,
+        });
+        logger.info(`userIndexByFID.set(${fid}, ${userIndex})`);
     }
 }

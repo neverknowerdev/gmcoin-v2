@@ -1,9 +1,9 @@
 import { Interface } from "@ethersproject/abi";
-import { Storage } from './storage';
+import { Storage } from "./storage";
 import { Web3Function, Web3FunctionEventContext, Web3FunctionResult } from "@gelatonetwork/web3-functions-sdk";
-import { Contract, ContractRunner } from "ethers";
+import { Contract, ContractRunner, InterfaceAbi } from "ethers";
 import { Web3FunctionResultCallData } from "@gelatonetwork/web3-functions-sdk/dist/lib/types/Web3FunctionResult";
-import { Batch, BatchToString, ContractABI, defaultResult, Result, Tweet, TweetProcessingType } from "./consts";
+import { Batch, BatchToString, defaultResult, MintingSettings, Platform, Result, Tweet, TweetProcessingType, MinterABI, AccountManagerABI, GMCoinABI, TwitterAccountWithUsername } from "./consts";
 import { BatchManager } from "./batchManager";
 import { TwitterRequester } from "./twitterRequester";
 import { SmartContractConnector } from "./smartContractConnector";
@@ -109,19 +109,46 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
         return { canExec: false, message: `Missing SERVER_API_KEY env variable` };
     }
 
+    if (!userArgs.minterAddress) {
+        return { canExec: false, message: `Missing minterAddress user argument` };
+    }
+    if (!userArgs.accountManagerAddress) {
+        return { canExec: false, message: `Missing accountManagerAddress user argument` };
+    }
+    if (!userArgs.gmCoinAddress) {
+        return { canExec: false, message: `Missing gmCoinAddress user argument` };
+    }
+
     try {
         const provider = multiChainProvider.default() as unknown as ContractRunner;
-        const smartContract = new Contract(
-            userArgs.contractAddress as string,
-            ContractABI,
+        const minterContract = new Contract(
+            userArgs.minterAddress as string,
+            MinterABI,
+            provider
+        );
+        const gmCoinContract = new Contract(
+            userArgs.gmCoinAddress as string,
+            GMCoinABI,
+            provider
+        );
+        const accountManagerContract = new Contract(
+            userArgs.accountManagerAddress as string,
+            AccountManagerABI,
             provider
         );
 
-        const contract = new Interface(ContractABI);
-        const event = contract.parseLog(log);
+        const minterInterface = new Interface(MinterABI as InterfaceAbi);
+        const event = minterInterface.parseLog(log);
 
+        const { platform, mintingDayTimestamp, batches: eventBatches } = event.args;
 
-        const { mintingDayTimestamp, batches: eventBatches } = event.args;
+        if (Number(platform) !== Platform.Twitter) {
+            logger.warn(`Received event for non-twitter platform: ${platform}`);
+            return {
+                canExec: false,
+                message: "Event platform does not match Twitter worker",
+            };
+        }
 
         let storage = new Storage(w3fStorage, mintingDayTimestamp);
 
@@ -136,7 +163,7 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
             twitterSearchByQueryURL: `${twitterOptimizedServerHost}/Search`,
         });
 
-        let contractConnector = new SmartContractConnector(provider, smartContract, storage, logger);
+        let contractConnector = new SmartContractConnector(accountManagerContract, storage, logger);
 
         let batchManager = new BatchManager(logger, storage, contractConnector, mintingDayTimestamp, CONCURRENCY_LIMIT);
 
@@ -152,11 +179,19 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
 
         logger.info(`received batches:`, BatchToString(initBatches));
 
+        let accountInfoMap = await storage.loadAccountInfoMap();
+
         let {
             batchesToProcess,
             queryList,
-            userIndexByUsername
+            userIndexByUsername,
+            accountInfoByUserIndex
         } = await batchManager.generateNewBatches(twitterRequester, mintingDayTimestamp, initBatches);
+
+        accountInfoByUserIndex.forEach((value, key) => {
+            accountInfoMap.set(key, value);
+        });
+        await storage.saveAccountInfoMap(accountInfoMap);
 
         logger.info(`userIndexByUsername size:`, userIndexByUsername.size, `content:`, userIndexByUsername);
         logger.info(`generateNewBatches count:`, batchesToProcess.length, `batches:`, BatchToString(batchesToProcess));
@@ -167,6 +202,7 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
         let UserResults = await storage.loadUserResults();
 
         let tweetsToVerify: Tweet[] = await storage.getTweetsToVerify();
+        const mintingSettings = await fetchMintingSettings(minterContract, storage, logger);
 
         if (batchesToProcess.length > 0) { // process batches
             logger.info(`Processing`, batchesToProcess.length, `batches`);
@@ -284,21 +320,35 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
                 batchesToProcess.push(...batchesToRetry);
             }
 
-            if (sortedResults.length > 0 || batchesToProcess.length > 0) {
+            const { addresses, amounts, totalPoints } = buildMintPayload(sortedResults, accountInfoMap, mintingSettings, logger);
+
+            if (addresses.length > 0) {
                 transactions.push({
-                    to: userArgs.contractAddress as string,
-                    data: smartContract.interface.encodeFunctionData("mintCoinsForTwitterUsers", [
-                        sortedResults,
+                    to: userArgs.gmCoinAddress as string,
+                    data: gmCoinContract.interface.encodeFunctionData("mintFromGelatoW3F", [
+                        addresses,
+                        amounts,
+                    ]),
+                });
+            }
+
+            if (totalPoints > 0n || batchesToProcess.length > 0) {
+                transactions.push({
+                    to: userArgs.minterAddress as string,
+                    data: minterContract.interface.encodeFunctionData("processMintingBatches", [
+                        Platform.Twitter,
+                        totalPoints,
                         BigInt(mintingDayTimestamp),
                         batchesToProcess,
                     ]),
-                })
+                });
             }
             if (errorBatchesToLog.length > 0) {
                 logger.info(`logErrorBatches ${errorBatches.length}`);
                 transactions.push({
-                    to: userArgs.contractAddress as string,
-                    data: smartContract.interface.encodeFunctionData("logErrorBatches", [
+                    to: userArgs.minterAddress as string,
+                    data: minterContract.interface.encodeFunctionData("logErrorBatches", [
+                        Platform.Twitter,
                         BigInt(mintingDayTimestamp),
                         errorBatches,
                     ]),
@@ -346,17 +396,28 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
 
                 const results = [...UserResults.values()].sort((a, b) => Number(a.userIndex - b.userIndex));
 
-                if (results && results.length > 0) {
-                    transactions.push(
-                        {
-                            to: await smartContract.getAddress() as string,
-                            data: smartContract.interface.encodeFunctionData("mintCoinsForTwitterUsers", [
-                                results,
-                                BigInt(mintingDayTimestamp),
-                                [],
-                            ]),
-                        },
-                    )
+                const { addresses, amounts, totalPoints } = buildMintPayload(results, accountInfoMap, mintingSettings, logger);
+
+                if (addresses.length > 0) {
+                    transactions.push({
+                        to: userArgs.gmCoinAddress as string,
+                        data: gmCoinContract.interface.encodeFunctionData("mintFromGelatoW3F", [
+                            addresses,
+                            amounts,
+                        ]),
+                    });
+                }
+
+                if (totalPoints > 0n) {
+                    transactions.push({
+                        to: userArgs.minterAddress as string,
+                        data: minterContract.interface.encodeFunctionData("processMintingBatches", [
+                            Platform.Twitter,
+                            totalPoints,
+                            BigInt(mintingDayTimestamp),
+                            [],
+                        ]),
+                    });
                 }
             } catch (error) {
                 // Handle errors for this batch
@@ -385,8 +446,9 @@ async function executeTwitterWorker(logger: CloudwatchLogger, context: Web3Funct
             await storage.clearAll();
 
             transactions.push({
-                to: await smartContract.getAddress() as string,
-                data: smartContract.interface.encodeFunctionData("finishMinting", [
+                to: userArgs.minterAddress as string,
+                data: minterContract.interface.encodeFunctionData("finishMinting", [
+                    Platform.Twitter,
                     BigInt(mintingDayTimestamp),
                     finalHash
                 ]),
@@ -478,4 +540,96 @@ function findKeywordWithPrefix(text: string): string {
     }
 
     return foundWord;
+}
+
+type CachedMintingSettings = {
+    pointsPerPost: string;
+    pointsPerLike: string;
+    pointsPerHashtag: string;
+    pointsPerCashtag: string;
+    coinsMultiplicator: string;
+};
+
+async function fetchMintingSettings(minterContract: Contract, storage: Storage, logger: CloudwatchLogger): Promise<MintingSettings> {
+    // Check cache first
+    const cached = await storage.getMintingSettings();
+    if (cached) {
+        try {
+            const parsed = JSON.parse(cached) as CachedMintingSettings;
+            logger.info('Using cached minting settings');
+            return {
+                pointsPerPost: BigInt(parsed.pointsPerPost),
+                pointsPerLike: BigInt(parsed.pointsPerLike),
+                pointsPerHashtag: BigInt(parsed.pointsPerHashtag),
+                pointsPerCashtag: BigInt(parsed.pointsPerCashtag),
+                coinsMultiplicator: BigInt(parsed.coinsMultiplicator),
+            };
+        } catch (error) {
+            logger.warn(`Failed to parse cached minting settings: ${error}`);
+        }
+    }
+
+    // Fetch from contract if not cached
+    logger.info('Fetching minting settings from contract');
+    const [pointsPerPost, pointsPerLike, pointsPerHashtag, pointsPerCashtag, coinsMultiplicator] = await minterContract.getMintingSettings();
+    const settings: MintingSettings = {
+        pointsPerPost: BigInt(pointsPerPost),
+        pointsPerLike: BigInt(pointsPerLike),
+        pointsPerHashtag: BigInt(pointsPerHashtag),
+        pointsPerCashtag: BigInt(pointsPerCashtag),
+        coinsMultiplicator: BigInt(coinsMultiplicator),
+    };
+    
+    const cachePayload: CachedMintingSettings = {
+        pointsPerPost: settings.pointsPerPost.toString(),
+        pointsPerLike: settings.pointsPerLike.toString(),
+        pointsPerHashtag: settings.pointsPerHashtag.toString(),
+        pointsPerCashtag: settings.pointsPerCashtag.toString(),
+        coinsMultiplicator: settings.coinsMultiplicator.toString(),
+    };
+
+    // Cache for future runs of this mintingDay
+    await storage.saveMintingSettings(JSON.stringify(cachePayload));
+    return settings;
+}
+
+function buildMintPayload(
+    results: Result[],
+    accountInfoMap: Map<number, TwitterAccountWithUsername>,
+    settings: MintingSettings,
+    logger: CloudwatchLogger
+): { addresses: string[]; amounts: bigint[]; totalPoints: bigint } {
+    const addresses: string[] = [];
+    const amounts: bigint[] = [];
+    let totalPoints = 0n;
+
+    for (const result of results) {
+        const accountInfo = accountInfoMap.get(result.userIndex);
+        if (!accountInfo) {
+            logger.warn(`Missing account info for userIndex ${result.userIndex}, skipping mint`);
+            continue;
+        }
+
+        const points = calculateUserPoints(result, settings);
+        if (points === 0n) {
+            continue;
+        }
+
+        totalPoints += points;
+        const coins = points * settings.coinsMultiplicator;
+
+        addresses.push(accountInfo.primaryWallet);
+        amounts.push(coins);
+    }
+
+    return { addresses, amounts, totalPoints };
+}
+
+function calculateUserPoints(result: Result, settings: MintingSettings): bigint {
+    return (
+        BigInt(result.simpleTweets) * settings.pointsPerPost +
+        BigInt(result.hashtagTweets) * settings.pointsPerHashtag +
+        BigInt(result.cashtagTweets) * settings.pointsPerCashtag +
+        BigInt(result.likes) * settings.pointsPerLike
+    );
 }

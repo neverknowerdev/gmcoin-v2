@@ -360,6 +360,26 @@ contract Minter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit MintingErrored(platform, mintingDayTimestamp, batches);
     }
 
+    function getMintingSettings()
+        external
+        view
+        returns (
+            uint256 pointsPerPost,
+            uint256 pointsPerLike,
+            uint256 pointsPerHashtag,
+            uint256 pointsPerCashtag,
+            uint256 coinsMultiplicator
+        )
+    {
+        return (
+            POINTS_PER_POST,
+            POINTS_PER_LIKE,
+            POINTS_PER_HASHTAG,
+            POINTS_PER_CASHTAG,
+            COINS_MULTIPLICATOR
+        );
+    }
+
     function getStartOfYesterday() public view returns (uint32) {
         // Calculate the start of today (midnight) by rounding down block.timestamp to the nearest day.
         uint32 startOfToday = uint32((block.timestamp / 1 days) * 1 days);
