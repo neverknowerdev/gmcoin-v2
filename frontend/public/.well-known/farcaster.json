@@ -1,0 +1,37 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "baseBuilder": {
+    "ownerAddress": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "GMcoin Mini App",
+    "homeUrl": "https://gmcoin.app",
+    "iconUrl": "https://gmcoin.app/assets/icon.png",
+    "splashImageUrl": "https://gmcoin.app/assets/splash.png",
+    "splashBackgroundColor": "#030712",
+    "subtitle": "Portfolio signals",
+    "description": "Track Base-native balances, queue batched actions, and share alpha instantly.",
+    "screenshotUrls": [
+      "https://gmcoin.app/assets/screen-1.png",
+      "https://gmcoin.app/assets/screen-2.png",
+      "https://gmcoin.app/assets/screen-3.png"
+    ],
+    "primaryCategory": "finance",
+    "tags": [
+      "finance",
+      "portfolio"
+    ],
+    "heroImageUrl": "https://gmcoin.app/assets/hero.png",
+    "tagline": "Manage Base wealth",
+    "ogTitle": "GMcoin Mini App",
+    "ogDescription": "Social-native crypto portfolio tracker for Base Mini Apps.",
+    "ogImageUrl": "https://gmcoin.app/assets/og.png",
+    "noindex": true
+  }
+}
+
