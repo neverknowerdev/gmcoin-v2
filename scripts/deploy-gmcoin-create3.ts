@@ -1,4 +1,6 @@
 import { ethers } from "hardhat";
+import type { GMCoinImplementation } from "../typechain-types";
+import { normalizeSalt, predictCreate3DeployedAddress } from "./utils/create3";
 
 async function main() {
 
@@ -11,6 +13,7 @@ async function main() {
     const treasuryAddress = process.env.GMCOIN_TREASURY_ADDRESS ?? deployer.address;
     const coinsMultiplicator = Number(process.env.GMCOIN_COINS_MULTIPLICATOR ?? "300");
     const epochDays = Number(process.env.GMCOIN_EPOCH_DAYS ?? "30");
+    const timeDelay = Number(process.env.GMCOIN_TIME_DELAY ?? "0");
     const gelatoDedicatedMsgSender = process.env.GMCOIN_GELATO_SENDER ?? deployer.address;
 
     if (!Number.isFinite(coinsMultiplicator) || !Number.isFinite(epochDays)) {
@@ -21,13 +24,8 @@ async function main() {
     const implSaltInput = process.env.CREATE3_SALT_IMPL ?? "gmcoin-impl";
     const proxySaltInput = process.env.CREATE3_SALT_PROXY ?? "gmcoin-proxy";
 
-    const toSalt = (input: string) => {
-        if (input.startsWith("0x") && input.length === 66) return input as `0x${string}`;
-        return ethers.keccak256(ethers.toUtf8Bytes(input));
-    };
-
-    const implSalt = toSalt(implSaltInput);
-    const proxySalt = toSalt(proxySaltInput);
+    const implSalt = normalizeSalt(implSaltInput);
+    const proxySalt = normalizeSalt(proxySaltInput);
 
     // 0) Get or deploy a Create3Deployer
     let create3DeployerAddress = process.env.CREATE3_DEPLOYER_ADDRESS as string | undefined;
@@ -46,9 +44,14 @@ async function main() {
         console.log("Create3Deployer deployed at:", create3DeployerAddress);
     }
 
+    if (!create3DeployerAddress) {
+        throw new Error("Failed to resolve Create3Deployer address");
+    }
+    const factoryAddress = create3DeployerAddress;
+
     // 1) Prepare and deploy GMCoin implementation via CREATE3 (no constructor args)
-    const GMCoinFactory = await ethers.getContractFactory("GMCoin");
-    const implDeployTx = await GMCoinFactory.getDeployTransaction();
+    const GMCoinImplementationFactory = await ethers.getContractFactory("GMCoinImplementation");
+    const implDeployTx = await GMCoinImplementationFactory.getDeployTransaction();
     if (!implDeployTx.data) throw new Error("Failed to build GMCoin init code");
 
     const predictedImpl = await create3.getDeployedAddress(implSalt);
@@ -60,22 +63,25 @@ async function main() {
     console.log("GMCoin implementation deployed:", implementationAddress);
 
     // 2) Encode initializer for proxy -> calls GMCoin.initialize(...)
-    const initData = GMCoinFactory.interface.encodeFunctionData("initialize", [
+    const initData = GMCoinImplementationFactory.interface.encodeFunctionData("initialize", [
         owner,
         feeAddress,
         treasuryAddress,
         coinsMultiplicator,
         epochDays,
         gelatoDedicatedMsgSender,
+        timeDelay,
     ]);
 
     // 3) Prepare and deploy ERC1967 proxy via CREATE3 with constructor(impl, initData)
-    const GMProxyFactory = await ethers.getContractFactory("GMProxy");
+    const GMProxyFactory = await ethers.getContractFactory("GMCoin");
     const proxyDeployTx = await GMProxyFactory.getDeployTransaction(implementationAddress, initData);
     if (!proxyDeployTx.data) throw new Error("Failed to build GMProxy init code");
 
     const predictedProxy = await create3.getDeployedAddress(proxySalt);
+    const offlinePredictedProxy = predictCreate3DeployedAddress(factoryAddress, proxySalt);
     console.log("Predicted GMCoin proxy:", predictedProxy);
+    console.log("Offline predicted proxy:", offlinePredictedProxy);
 
     const proxyTx = await create3.deploy(proxySalt, proxyDeployTx.data);
     await proxyTx.wait();
@@ -83,7 +89,9 @@ async function main() {
     console.log("GMCoin proxy deployed:", proxyAddress);
 
     // 4) Quick sanity read via proxy
-    const gmcoin = GMCoinFactory.attach(proxyAddress).connect(deployer);
+    const gmcoin = GMCoinImplementationFactory.attach(proxyAddress).connect(
+        deployer
+    ) as GMCoinImplementation;
     console.log("GMCoin name via proxy:", await gmcoin.name());
     console.log("GMCoin symbol via proxy:", await gmcoin.symbol());
 }
