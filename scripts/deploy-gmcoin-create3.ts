@@ -57,10 +57,16 @@ async function main() {
     const predictedImpl = await create3.getDeployedAddress(implSalt);
     console.log("Predicted GMCoin implementation:", predictedImpl);
 
-    const implTx = await create3.deploy(implSalt, implDeployTx.data);
-    const implReceipt = await implTx.wait();
-    const implementationAddress = await create3.getDeployedAddress(implSalt);
-    console.log("GMCoin implementation deployed:", implementationAddress);
+    let implementationAddress = predictedImpl;
+    const existingImplCode = await ethers.provider.getCode(predictedImpl);
+    if (existingImplCode && existingImplCode !== "0x") {
+        console.log("Implementation already deployed, skipping CREATE3 call.");
+    } else {
+        const implTx = await create3.deploy(implSalt, implDeployTx.data);
+        await implTx.wait();
+        implementationAddress = await create3.getDeployedAddress(implSalt);
+        console.log("GMCoin implementation deployed:", implementationAddress);
+    }
 
     // 2) Encode initializer for proxy -> calls GMCoin.initialize(...)
     const initData = GMCoinImplementationFactory.interface.encodeFunctionData("initialize", [
@@ -83,10 +89,16 @@ async function main() {
     console.log("Predicted GMCoin proxy:", predictedProxy);
     console.log("Offline predicted proxy:", offlinePredictedProxy);
 
-    const proxyTx = await create3.deploy(proxySalt, proxyDeployTx.data);
-    await proxyTx.wait();
-    const proxyAddress = await create3.getDeployedAddress(proxySalt);
-    console.log("GMCoin proxy deployed:", proxyAddress);
+    let proxyAddress = predictedProxy;
+    const existingProxyCode = await ethers.provider.getCode(predictedProxy);
+    if (existingProxyCode && existingProxyCode !== "0x") {
+        console.log("Proxy already deployed, skipping CREATE3 call.");
+    } else {
+        const proxyTx = await create3.deploy(proxySalt, proxyDeployTx.data);
+        await proxyTx.wait();
+        proxyAddress = await create3.getDeployedAddress(proxySalt);
+        console.log("GMCoin proxy deployed:", proxyAddress);
+    }
 
     // 4) Quick sanity read via proxy
     const gmcoin = GMCoinImplementationFactory.attach(proxyAddress).connect(

@@ -39,22 +39,39 @@ final = CREATE(proxy, nonce=1)
 
 ## 🚀 Quick Start
 
-### 1. Deploy CREATE3Deployer (One-Time Setup)
+### 1. Bootstrap the Deterministic CREATE2 Factory
+
+The CREATE3 workflow assumes the canonical deterministic deployer (often called the SingletonFactory) exists at `0x4e59b44847b379578588920ca78fbf26c0b4956c`. Most major public chains already include it, but if your target network does not, you can broadcast the pre-signed raw transaction via:
+
+```bash
+npx hardhat run scripts/deploy-deterministic-deployer.ts --network <network>
+```
+
+This script:
+
+- Checks whether bytecode already exists at the canonical factory address.
+- Broadcasts the Arachnid deterministic deployer raw transaction if needed.
+- Waits for confirmation and re-validates the code deployment.
+
+> ℹ️ The raw transaction is chain-agnostic (no EIP-155 chain ID), so it can be replayed on any EVM-compatible network that supports legacy transactions. Make sure your RPC endpoint allows `eth_sendRawTransaction`.
+
+### 2. Deploy CREATE3Deployer (One-Time Setup Per Chain)
 
 First, deploy the `Create3Deployer` factory contract on each target network:
 
 ```bash
-# Deploy to a network
-npx hardhat run scripts/deploy-create3deployer.ts --network sepolia
+# Deterministic deployment via CREATE2
+npx hardhat run scripts/deploy-create3deployer-create2.ts --network sepolia
 ```
 
-**Important**: The `Create3Deployer` must be deployed to the **same address** on all networks for CREATE3 to work. You can achieve this by:
-- Using the same deployer account with the same nonce on all networks
-- Or using CREATE2 to deploy the factory itself
+**Important**: The `Create3Deployer` must be deployed to the **same address** on all networks for CREATE3 to work. Our CREATE2 helper ensures this automatically as long as:
+
+- The deterministic deployer lives at `0x4e59b44847b379578588920ca78fbf26c0b4956c`.
+- You reuse the same salt (`gmcoin-create3-factory` by default).
 
 Save the deployed address for use in subsequent deployments.
 
-### 2. Deploy GMCoin via CREATE3
+### 3. Deploy GMCoin via CREATE3
 
 Deploy the GMCoin proxy using CREATE3:
 
@@ -246,26 +263,26 @@ const { proxy, deployed } = getCreate3Addresses(factory, salt);
 
 ## 🔄 Multi-Chain Deployment Workflow
 
-### Step 1: Deploy CREATE3Deployer on All Networks
+### Step 1: Ensure Deterministic Factory Exists
 
-Deploy the factory to the same address on all target networks:
+Run `scripts/deploy-deterministic-deployer.ts` on every new network that does **not** already host the canonical factory.
+
+### Step 2: Deploy CREATE3Deployer on All Networks
+
+Deterministically deploy the CREATE3 factory:
 
 ```bash
 # Network 1: Sepolia
-npx hardhat run scripts/deploy-create3deployer.ts --network sepolia
+npx hardhat run scripts/deploy-create3deployer-create2.ts --network sepolia
 
 # Network 2: Base Sepolia
-npx hardhat run scripts/deploy-create3deployer.ts --network baseSepolia
+npx hardhat run scripts/deploy-create3deployer-create2.ts --network baseSepolia
 
 # Network 3: Arbitrum Sepolia
-npx hardhat run scripts/deploy-create3deployer.ts --network arbitrumSepolia
+npx hardhat run scripts/deploy-create3deployer-create2.ts --network arbitrumSepolia
 ```
 
-**Note**: To get the same factory address on all networks, either:
-- Use the same deployer account with the same nonce
-- Or deploy the factory itself via CREATE2
-
-### Step 2: Deploy GMCoin with Same Salt
+### Step 3: Deploy GMCoin with Same Salt
 
 Use the same salt values on all networks:
 
