@@ -45,6 +45,56 @@ export const ACCOUNT_MANAGER_ABI = [
     anonymous: false,
     inputs: [
       {
+        indexed: true,
+        internalType: "address",
+        name: "wallet",
+        type: "address",
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "authCode",
+        type: "string",
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "tweetID",
+        type: "string",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "twitterID",
+        type: "uint256",
+      },
+    ],
+    name: "VerifyTwitterByAuthCodeRequested",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "farcasterFid",
+        type: "uint256",
+      },
+      {
+        indexed: true,
+        internalType: "address",
+        name: "wallet",
+        type: "address",
+      },
+    ],
+    name: "VerifyFarcasterRequested",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
         indexed: false,
         internalType: "uint256",
         name: "twitterID",
@@ -204,6 +254,87 @@ export const ACCOUNT_MANAGER_ABI = [
     ],
     stateMutability: "view",
     type: "function",
+  },
+  // Custom errors
+  {
+    inputs: [],
+    name: "UserNotExist",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "UserAlreadyLinked",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "WalletAlreadyLinked",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "WalletAlreadyLinkedToFid",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "FarcasterAccountAlreadyLinked",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "InvalidSignature",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "WalletAlreadyRegistered",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "CallerNotRegistered",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "FromUserNotExist",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "ToUserNotExist",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "CannotMergeSameUser",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "TwitterIdAlreadyLinked",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "FarcasterFidAlreadyLinked",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "WalletNotLinked",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "CannotRemoveUserActiveWorkers",
+    type: "error",
+  },
+  {
+    inputs: [],
+    name: "GelatoOnly",
+    type: "error",
   },
 ] as const;
 

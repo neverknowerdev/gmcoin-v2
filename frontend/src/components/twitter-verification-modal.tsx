@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useAccountManager } from "@/hooks/useAccountManager";
+import { useState, useEffect } from "react";
+import { useAccountManager, useVerificationEvents } from "@/hooks/useAccountManager";
 import { generateTwitterAuthCode } from "@/lib/twitter-auth-code";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
 import type { XProfile } from "@/types/social";
@@ -18,9 +18,43 @@ export function TwitterVerificationModal({
   onSuccess,
 }: TwitterVerificationModalProps) {
   const { address } = useWalletConnection();
-  const { requestTwitterVerification, isPending } = useAccountManager();
+  const { requestTwitterVerification, isPending, hash, isConfirmed, error: txError, isCorrectChain, chainId } = useAccountManager();
   const [tweetID, setTweetID] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<{
+    status: "pending" | "success" | "error";
+    message?: string;
+  } | null>(null);
+
+  // Listen for verification result events
+  useVerificationEvents(
+    (twitterID, wallet, isSuccess, errorMsg) => {
+      // Only handle events for this specific Twitter ID and wallet
+      if (twitterID === profile.id && wallet.toLowerCase() === address?.toLowerCase()) {
+        if (isSuccess) {
+          setVerificationStatus({ status: "success", message: "Twitter account verified successfully!" });
+          console.log("✅ Twitter verification successful!");
+          // Close modal and call onSuccess after a short delay
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+          }, 2000);
+        } else {
+          setVerificationStatus({ status: "error", message: errorMsg || "Verification failed" });
+          console.error("❌ Twitter verification failed:", errorMsg);
+        }
+      }
+    },
+    undefined // No Farcaster handler needed here
+  );
+
+  // Update txHash when hash changes
+  useEffect(() => {
+    if (hash) {
+      setTxHash(hash);
+    }
+  }, [hash]);
 
   if (!address) {
     return (
@@ -46,11 +80,30 @@ export function TwitterVerificationModal({
       return;
     }
 
+    // Check chain before submitting
+    if (!isCorrectChain) {
+      setError(`Wrong network! Please switch to Base Sepolia. Current chain: ${chainId}`);
+      return;
+    }
+
     try {
-      await requestTwitterVerification(authCode, profile.id, tweetID.trim());
-      onSuccess();
+      const result = await requestTwitterVerification(authCode, profile.id, tweetID.trim());
+      console.log("✅ Twitter verification transaction submitted:", result);
+      if (hash) {
+        setTxHash(hash);
+        console.log("📝 Transaction hash:", hash);
+        console.log("🔗 View on BaseScan:", `https://sepolia.basescan.org/tx/${hash}`);
+      }
+      // Don't call onSuccess immediately - wait for confirmation
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit verification");
+      console.error("❌ Twitter verification failed:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to submit verification";
+      setError(errorMessage);
+      
+      // If it's a chain error, provide helpful message
+      if (errorMessage.includes("network") || errorMessage.includes("chain")) {
+        setError(`${errorMessage}. Please switch to Base Sepolia in your wallet.`);
+      }
     }
   };
 
@@ -88,6 +141,34 @@ export function TwitterVerificationModal({
               You can find the tweet ID in the tweet URL: twitter.com/username/status/TWEET_ID
             </p>
           </div>
+          {txHash && (
+            <div className="rounded-lg bg-blue-500/20 p-3 text-sm text-blue-200">
+              <p className="font-semibold">✅ Transaction submitted!</p>
+              <p className="text-xs mt-1 break-all">Hash: {txHash}</p>
+              <a
+                href={`https://sepolia.basescan.org/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs underline mt-1 block"
+              >
+                View on BaseScan →
+              </a>
+              {isConfirmed && !verificationStatus && (
+                <p className="text-xs mt-1 text-green-300">✅ Transaction confirmed! Waiting for Gelato to verify...</p>
+              )}
+              {verificationStatus?.status === "success" && (
+                <p className="text-xs mt-1 text-green-300">✅ {verificationStatus.message}</p>
+              )}
+              {verificationStatus?.status === "error" && (
+                <p className="text-xs mt-1 text-red-300">❌ {verificationStatus.message}</p>
+              )}
+            </div>
+          )}
+          {txError && (
+            <div className="rounded-lg bg-red-500/20 p-3 text-sm text-red-200">
+              Transaction error: {txError.message || String(txError)}
+            </div>
+          )}
           {error && (
             <div className="rounded-lg bg-red-500/20 p-3 text-sm text-red-200">{error}</div>
           )}

@@ -12,10 +12,11 @@ import { useWalletConnection } from "./useWalletConnection";
 export function useFarcasterSIWE() {
   const { profile, isAuthenticated } = useProfile();
   const { address } = useWalletConnection();
-  const { requestFarcasterVerification } = useAccountManager();
+  const { requestFarcasterVerification, hash, isConfirmed, error: txError } = useAccountManager();
   const [verificationStatus, setVerificationStatus] = useState<{
     status: "idle" | "pending" | "success" | "error";
     error?: string;
+    txHash?: string;
   }>({ status: "idle" });
   const [hasTriggered, setHasTriggered] = useState(false);
 
@@ -41,12 +42,22 @@ export function useFarcasterSIWE() {
 
           // Call the contract to request verification
           // The contract function will use the connected wallet (msg.sender)
-          await requestFarcasterVerification(profile.fid);
-
-          // Status will be updated via event listener in VerificationHandler
-          setVerificationStatus({ status: "pending" });
+          console.log("🔄 Requesting Farcaster verification for FID:", profile.fid, "Wallet:", address);
+          const result = await requestFarcasterVerification(profile.fid);
+          console.log("✅ Farcaster verification transaction submitted:", result);
+          
+          // Update status with transaction hash if available
+          setVerificationStatus({ 
+            status: "pending",
+            txHash: hash || undefined,
+          });
+          
+          if (hash) {
+            console.log("📝 Transaction hash:", hash);
+            console.log("🔗 View on BaseScan:", `https://sepolia.basescan.org/tx/${hash}`);
+          }
         } catch (error) {
-          console.error("Farcaster SIWE verification failed:", error);
+          console.error("❌ Farcaster SIWE verification failed:", error);
           setVerificationStatus({
             status: "error",
             error: error instanceof Error ? error.message : "Unknown error",
@@ -78,6 +89,7 @@ export function useFarcasterSIWE() {
   useVerificationEvents(
     undefined, // Twitter handler not needed here
     (farcasterFid, wallet, isSuccess, errorMsg) => {
+      console.log("📨 Farcaster verification event received:", { farcasterFid, wallet, isSuccess, errorMsg });
       // Only update if this event is for our FID and wallet
       if (
         profile?.fid &&
@@ -85,21 +97,51 @@ export function useFarcasterSIWE() {
         wallet.toLowerCase() === address?.toLowerCase()
       ) {
         if (isSuccess) {
+          console.log("✅ Farcaster verification successful!");
           setVerificationStatus({ status: "success" });
         } else {
+          console.error("❌ Farcaster verification failed:", errorMsg);
           setVerificationStatus({
             status: "error",
             error: errorMsg || "Verification failed",
           });
           setHasTriggered(false); // Allow retry on error
         }
+      } else {
+        console.log("⚠️ Event not for this user:", {
+          eventFid: farcasterFid,
+          ourFid: profile?.fid?.toString(),
+          eventWallet: wallet,
+          ourWallet: address,
+        });
       }
     }
   );
 
+  // Update status when transaction is confirmed
+  useEffect(() => {
+    if (isConfirmed && verificationStatus.status === "pending") {
+      console.log("✅ Transaction confirmed! Waiting for Gelato to process verification...");
+    }
+  }, [isConfirmed, verificationStatus.status]);
+
+  // Log transaction errors
+  useEffect(() => {
+    if (txError) {
+      console.error("❌ Transaction error:", txError);
+      setVerificationStatus({
+        status: "error",
+        error: txError.message || "Transaction failed",
+      });
+      setHasTriggered(false);
+    }
+  }, [txError]);
+
   return {
     verificationStatus,
     isVerifying: verificationStatus.status === "pending",
+    txHash: verificationStatus.txHash || hash,
+    isConfirmed,
   };
 }
 

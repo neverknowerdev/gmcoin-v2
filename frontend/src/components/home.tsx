@@ -13,6 +13,7 @@ import { TokenizationCard } from "./home/tokenization-card";
 import { StreakCard } from "./home/streak-card";
 import { DifficultyCard } from "./home/difficulty-card";
 import { TwitterVerificationModal } from "./twitter-verification-modal";
+import { VerificationStatus } from "./verification-status";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
 import { getFarcasterProfileUrl } from "@/lib/social-links";
 import { DynamicConnectButton } from "@dynamic-labs/sdk-react-core";
@@ -169,10 +170,17 @@ export function MiniAppHome() {
 
   const handleDisconnectX = useCallback(async () => {
     try {
-      await fetch("/api/x/disconnect", { method: "POST" });
+      const response = await fetch("/api/x/disconnect", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to disconnect");
+      }
+      console.log("✅ X account disconnected successfully");
+      // Clear local state immediately
+      setXConnection(null);
     } catch (error) {
-      console.error("Unable to disconnect X account", error);
+      console.error("❌ Unable to disconnect X account", error);
     } finally {
+      // Refresh to ensure state is synced
       void refreshXConnection();
     }
   }, [refreshXConnection]);
@@ -248,6 +256,12 @@ export function MiniAppHome() {
               setShowTwitterVerification(false);
               void refreshXConnection();
             }}
+          />
+        )}
+        {(xConnection || context?.user?.fid) && (
+          <VerificationStatus
+            twitterId={xConnection?.id}
+            farcasterFid={context?.user?.fid}
           />
         )}
         <BalanceCard

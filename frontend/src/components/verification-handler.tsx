@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAccountManager, useVerificationEvents } from "@/hooks/useAccountManager";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
-import { generateTwitterAuthCode } from "@/lib/twitter-auth-code";
-import { deserializeProfile } from "@/lib/client/x-oauth";
 import type { XProfile } from "@/types/social";
 import type { FarcasterProfile } from "@/types/social";
 
@@ -20,39 +18,54 @@ export function VerificationHandler() {
     farcaster?: "pending" | "success" | "error";
   }>({});
 
-  // Load profiles from cookies
+  // Load Twitter profile from API (cookies are httpOnly)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Load Twitter profile
-    const xProfileCookie = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("x_profile="));
-    if (xProfileCookie) {
-      const profileValue = decodeURIComponent(xProfileCookie.split("=").slice(1).join("="));
-      const profile = deserializeProfile(profileValue);
-      if (profile) setTwitterProfile(profile);
-    }
-
-    // Load Farcaster profile
-    const fcProfileCookie = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("fc_profile="));
-    if (fcProfileCookie) {
+    const loadTwitterProfile = async () => {
       try {
-        const profileValue = decodeURIComponent(fcProfileCookie.split("=").slice(1).join("="));
-        const profile = JSON.parse(profileValue) as FarcasterProfile;
-        setFarcasterProfile(profile);
-      } catch (e) {
-        console.error("Failed to parse Farcaster profile", e);
+        const response = await fetch("/api/x/status", { cache: "no-store" });
+        if (response.ok) {
+          const data = await response.json() as { connected: boolean; profile?: XProfile };
+          if (data.connected && data.profile) {
+            setTwitterProfile(data.profile);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load Twitter profile", error);
       }
-    }
+    };
+
+    void loadTwitterProfile();
   }, []);
 
   // Handle Twitter verification - UI will handle the tweet posting flow
   // This component just listens for events
 
-  // Handle Farcaster verification via OAuth (legacy flow)
+  // Load Farcaster profile from API (for OAuth flow)
+  // Note: SIWE flow is handled by useFarcasterSIWE hook in welcome-card
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const loadFarcasterProfile = async () => {
+      try {
+        const response = await fetch("/api/farcaster/status", { cache: "no-store" });
+        if (response.ok) {
+          const data = await response.json() as { connected: boolean; profile?: FarcasterProfile };
+          if (data.connected && data.profile) {
+            setFarcasterProfile(data.profile);
+          }
+        }
+      } catch (error) {
+        // Status endpoint might not be available, that's OK
+        console.debug("Farcaster status endpoint not available");
+      }
+    };
+
+    void loadFarcasterProfile();
+  }, []);
+
+  // Handle Farcaster verification via OAuth (non-SIWE flow)
   // Note: SIWE flow is handled by useFarcasterSIWE hook in welcome-card
   useEffect(() => {
     const fcAuth = searchParams.get("fcAuth");
@@ -74,25 +87,37 @@ export function VerificationHandler() {
   // Listen for verification events
   useVerificationEvents(
     (twitterID, wallet, isSuccess, errorMsg) => {
+      console.log("📨 Twitter verification event:", { twitterID, wallet, isSuccess, errorMsg });
       if (wallet.toLowerCase() === address?.toLowerCase()) {
+        console.log("✅ Twitter verification event matches our wallet!");
         setVerificationStatus((prev) => ({
           ...prev,
           twitter: isSuccess ? "success" : "error",
         }));
-        if (!isSuccess) {
-          console.error("Twitter verification failed:", errorMsg);
+        if (isSuccess) {
+          console.log("🎉 Twitter verification successful!");
+        } else {
+          console.error("❌ Twitter verification failed:", errorMsg);
         }
+      } else {
+        console.log("⚠️ Twitter event not for this wallet:", { eventWallet: wallet, ourWallet: address });
       }
     },
     (farcasterFid, wallet, isSuccess, errorMsg) => {
+      console.log("📨 Farcaster verification event:", { farcasterFid, wallet, isSuccess, errorMsg });
       if (wallet.toLowerCase() === address?.toLowerCase()) {
+        console.log("✅ Farcaster verification event matches our wallet!");
         setVerificationStatus((prev) => ({
           ...prev,
           farcaster: isSuccess ? "success" : "error",
         }));
-        if (!isSuccess) {
-          console.error("Farcaster verification failed:", errorMsg);
+        if (isSuccess) {
+          console.log("🎉 Farcaster verification successful!");
+        } else {
+          console.error("❌ Farcaster verification failed:", errorMsg);
         }
+      } else {
+        console.log("⚠️ Farcaster event not for this wallet:", { eventWallet: wallet, ourWallet: address });
       }
     }
   );

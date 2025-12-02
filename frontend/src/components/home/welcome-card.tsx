@@ -57,7 +57,7 @@ export function WelcomeCard({
   } = useSignIn({});
 
   const { profile: farcasterProfile } = useProfile();
-  const { isVerifying: isFarcasterVerifying } = useFarcasterSIWE();
+  const { isVerifying: isFarcasterVerifying, verificationStatus: farcasterStatus, txHash: farcasterTxHash } = useFarcasterSIWE();
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -214,7 +214,9 @@ export function WelcomeCard({
                 {isFarcasterPolling
                   ? "Waiting…"
                   : isFarcasterVerifying
-                    ? "Verifying…"
+                    ? farcasterStatus.status === "error"
+                      ? "Error"
+                      : "Verifying…"
                     : isFarcasterConnected
                       ? `@${farcasterUsername}`
                       : "Connect"}
