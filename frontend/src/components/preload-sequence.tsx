@@ -46,8 +46,8 @@ export function PreloadSequence({ children }: PropsWithChildren) {
         />
         <div className="relative flex items-center justify-center">
           <Image
-            src="/images/gmCup.svg"
-            alt="GM coin cup mascot"
+            src="/images/mascot1.svg"
+            alt="GM coin mascot"
             width={180}
             height={200}
             priority

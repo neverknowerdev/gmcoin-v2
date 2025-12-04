@@ -6,17 +6,15 @@ import {
   useOpenUrl,
 } from "@coinbase/onchainkit/minikit";
 import { useSignIn, useProfile } from "@farcaster/auth-kit";
-import { ProfileInfo } from "@/components/profile/profile-info";
-import { ProfileStats } from "@/components/profile/profile-stats";
+import { SocialActivity } from "@/components/stats/social-activity";
+import { EngagementImpact } from "@/components/stats/engagement-impact";
 import { AccountConnections } from "@/components/home/account-connections";
-import { SettingsList } from "@/components/profile/settings-list";
-import { ProfileActions } from "@/components/profile/profile-actions";
+import { InviteFriendsCard } from "@/components/home/invite-friends-card";
 import type { XProfile } from "@/types/social";
 
-export default function ProfilePage() {
+export default function SocialPage() {
   const { context } = useMiniKit();
   const openUrl = useOpenUrl();
-  const [notifications, setNotifications] = useState(true);
   const [xConnection, setXConnection] = useState<XProfile | null>(null);
   
   // Farcaster SIWE hooks
@@ -29,21 +27,6 @@ export default function ProfilePage() {
   const isFarcasterConnected = isFarcasterConnectedFromHook && Boolean(farcasterProfile);
   
   const isMiniApp = useMemo(() => Boolean(context), [context]);
-
-  const username = useMemo(
-    () => context?.user?.username ?? "username",
-    [context?.user?.username]
-  );
-
-  const gmId = useMemo(
-    () => {
-      if (context?.user?.fid) {
-        return context.user.fid.toString().padStart(6, '0');
-      }
-      return "024939"; // Default mock ID
-    },
-    [context?.user?.fid]
-  );
 
   const refreshXConnection = useCallback(async () => {
     try {
@@ -102,42 +85,25 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-white pb-32">
-      <ProfileInfo username={username} gmId={gmId} />
-      
-      <ProfileStats
-        balance="342,457"
-        streak="10 days"
-        rank="#888"
+      <SocialActivity
+        gmTweets="342"
+        gmCasts="21"
       />
       
-      <div className="px-4 mb-6">
-        <h2
-          className="text-xl font-bold text-black mb-4"
-          style={{ fontFamily: "var(--font-anton), sans-serif" }}
-        >
-          Connected accounts
-        </h2>
-        <AccountConnections
-          xConnection={xConnection}
-          isFarcasterConnected={isFarcasterConnected}
-          onConnectX={handleConnectX}
-          onConnectFarcaster={handleConnectFarcaster}
-        />
-      </div>
-      
-      <SettingsList
-        notifications={notifications}
-        onNotificationsToggle={setNotifications}
-        onEpochHistory={() => console.log("Epoch History clicked")}
-        onLanguage={() => console.log("Language clicked")}
-        onAbout={() => console.log("About GM clicked")}
-        onPrivacy={() => console.log("Privacy clicked")}
-        onHelp={() => console.log("Help clicked")}
+      <EngagementImpact
+        likesReceived="342"
+        reports="21"
       />
       
-      <ProfileActions
-        onBackupWallet={() => console.log("Backup Wallet clicked")}
-        onLogOut={() => console.log("Log Out clicked")}
+      <AccountConnections
+        xConnection={xConnection}
+        isFarcasterConnected={isFarcasterConnected}
+        onConnectX={handleConnectX}
+        onConnectFarcaster={handleConnectFarcaster}
+      />
+      
+      <InviteFriendsCard
+        onInvite={() => console.log("Invite clicked")}
       />
     </div>
   );

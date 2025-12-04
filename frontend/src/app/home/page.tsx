@@ -7,19 +7,21 @@ import {
   useAuthenticate,
   useOpenUrl,
 } from "@coinbase/onchainkit/minikit";
-import { WelcomeCard } from "./home/welcome-card";
-import { BalanceCard } from "./home/balance-card";
-import { TokenizationCard } from "./home/tokenization-card";
-import { StreakCard } from "./home/streak-card";
-import { DifficultyCard } from "./home/difficulty-card";
-import { TwitterVerificationModal } from "./twitter-verification-modal";
-import { VerificationStatus } from "./verification-status";
+import { useSignIn, useProfile } from "@farcaster/auth-kit";
+import { BalanceSection } from "@/components/home/balance-section";
+import { StreakCardNew } from "@/components/home/streak-card-new";
+import { AccountConnections } from "@/components/home/account-connections";
+import { LeaderboardCard } from "@/components/home/leaderboard-card";
+import { InviteFriendsCard } from "@/components/home/invite-friends-card";
+import { EpochCard } from "@/components/home/epoch-card";
+import { TokenizationCardNew } from "@/components/home/tokenization-card-new";
+import { TwitterVerificationModal } from "@/components/twitter-verification-modal";
+import { VerificationStatus } from "@/components/verification-status";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
-import { getFarcasterProfileUrl } from "@/lib/social-links";
 import { DynamicConnectButton } from "@dynamic-labs/sdk-react-core";
 import type { XProfile } from "@/types/social";
 
-export function MiniAppHome() {
+export default function HomePage() {
   const { context, setMiniAppReady } = useMiniKit();
   const { signIn } = useAuthenticate(
     process.env.NEXT_PUBLIC_MINIAPP_DOMAIN || undefined,
@@ -30,6 +32,16 @@ export function MiniAppHome() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [xConnection, setXConnection] = useState<XProfile | null>(null);
   const [showTwitterVerification, setShowTwitterVerification] = useState(false);
+  
+  // Farcaster SIWE hooks
+  const {
+    isConnected: isFarcasterConnectedFromHook,
+  } = useSignIn({});
+  
+  const { profile: farcasterProfile } = useProfile();
+  
+  const isFarcasterConnected = isFarcasterConnectedFromHook && Boolean(farcasterProfile);
+  
   useEffect(() => {
     void setMiniAppReady();
   }, [setMiniAppReady]);
@@ -226,65 +238,96 @@ export function MiniAppHome() {
     );
   }
 
+  // Mock data - replace with real data later
+  const streakData = [
+    { day: "Su", completed: true, isToday: false },
+    { day: "Mo", completed: true, isToday: false },
+    { day: "Tu", completed: true, isToday: false },
+    { day: "We", completed: true, isToday: false },
+    { day: "Th", completed: false, isToday: false },
+    { day: "Fr", completed: false, isToday: false },
+    { day: "Sa", completed: false, isToday: true },
+  ];
+
+  const leaderboardEntries = [
+    { rank: 1, name: "Name", amount: "100.567,8" },
+    { rank: 2, name: "Name", amount: "100.567,8" },
+    { rank: 3, name: "Name", amount: "100.567,8" },
+    { rank: 4, name: "Name", amount: "100.567,8" },
+    { rank: 5, name: "Name", amount: "100.567,8" },
+  ];
+
+  const userLeaderboardEntry = {
+    rank: 888,
+    name: "Name",
+    amount: "100.567,8",
+  };
+
   return (
-    <div className="relative flex min-h-screen flex-col justify-between px-4 pb-24 pt-8">
-        <Image
-          src="/images/Ellipse.svg"
-          alt="Gradient ellipse overlay"
-          fill
-          className="ellipse-overlay object-cover"
-          priority
+    <div className="">
+      <BalanceSection
+        balance="32,822 GM"
+        onHistory={() => console.log("History clicked")}
+        onHowToEarn={() => console.log("How to earn clicked")}
+      />
+      
+      <div className="space-y-4">
+        <StreakCardNew
+          streakDays={10}
+          percentile={5}
+          dayProgress={streakData}
         />
-      <section className="space-y-4 pb-20">
-        <WelcomeCard
-          displayName={displayName}
-          username={context?.user?.username}
-          addressLabel={addressLabel}
-          isVerified={isVerified}
-          onConnect={isMiniApp ? handleSignIn : undefined}
+        
+        <AccountConnections
+          xConnection={xConnection}
+          isFarcasterConnected={isFarcasterConnected}
           onConnectX={handleConnectX}
-          onDisconnectX={handleDisconnectX}
-          xConnection={xConnection ?? undefined}
-          isLoading={isAuthenticating}
-          showQuickAuth={isMiniApp}
+          onConnectFarcaster={handleConnectFarcaster}
         />
-        {showTwitterVerification && xConnection && (
-          <TwitterVerificationModal
-            profile={xConnection}
-            onClose={() => setShowTwitterVerification(false)}
-            onSuccess={() => {
-              setShowTwitterVerification(false);
-              void refreshXConnection();
-            }}
-          />
-        )}
-        {(xConnection || context?.user?.fid) && (
-          <VerificationStatus
-            twitterId={xConnection?.id}
-            farcasterFid={context?.user?.fid}
-          />
-        )}
-        <BalanceCard
-          balance="15,750 $GM"
-          change="+13.45%"
-          onBuy={() => openUrl("https://docs.base.org")}
-          onSell={() => openUrl("https://docs.base.org")}
-          onSwap={() => openUrl("https://docs.base.org")}
-          onMore={() => openUrl("https://docs.base.org")}
+        
+        <LeaderboardCard
+          entries={leaderboardEntries}
+          userEntry={userLeaderboardEntry}
+          onViewFull={() => console.log("View full leaderboard")}
         />
-        <TokenizationCard
-          percentage={73.2}
-          gmOnX="2.1M"
-          gmOnFarcaster="956K"
-          historical={[45, 62, 55, 68, 57, 66]}
+        
+        <InviteFriendsCard
+          onInvite={() => console.log("Invite clicked")}
         />
-        <StreakCard
-          dayProgress={[100, 120, 125, 180, 0, 0, 0]}
-          currentStreak={30}
-          difficultyLabel="Intermediate"
+        
+        <EpochCard
+          epochNumber={12}
+          currentDay={4}
+          totalDays={7}
+          mintingDifficulty="100 GM"
+          onHowItWorks={() => console.log("How it works clicked")}
+          onViewHistory={() => console.log("View epoch history")}
         />
-        <DifficultyCard mintingDifficulty={5327} />
-      </section>
+        
+        <TokenizationCardNew
+          percentage={80}
+          growthToday={12}
+          historical={[45, 62, 55, 68, 57, 66, 70, 75, 80]}
+          onViewStats={() => console.log("View detailed statistics")}
+        />
+      </div>
+      
+      {showTwitterVerification && xConnection && (
+        <TwitterVerificationModal
+          profile={xConnection}
+          onClose={() => setShowTwitterVerification(false)}
+          onSuccess={() => {
+            setShowTwitterVerification(false);
+            void refreshXConnection();
+          }}
+        />
+      )}
+      {(xConnection || context?.user?.fid) && (
+        <VerificationStatus
+          twitterId={xConnection?.id}
+          farcasterFid={context?.user?.fid}
+        />
+      )}
     </div>
   );
 }

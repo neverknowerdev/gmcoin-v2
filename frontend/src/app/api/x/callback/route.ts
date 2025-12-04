@@ -160,8 +160,62 @@ export async function GET(request: NextRequest) {
     profileImageUrl: profilePayload.data.profile_image_url ?? null,
   };
 
-  redirectTarget.searchParams.set("xAuth", "connected");
-  const response = NextResponse.redirect(redirectTarget);
+  // Set cookies
+  const cookieOptions = {
+    httpOnly: true as const,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+  };
+
+  // Check if this is a popup (from query param or window.opener)
+  const isPopup = request.nextUrl.searchParams.get("popup") === "true" || 
+                  request.headers.get("referer")?.includes("popup");
+
+  // Always return HTML that closes the window and notifies the parent
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>X Authentication Successful</title>
+      </head>
+      <body>
+        <script>
+          // Try to notify parent window first
+          try {
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({ type: 'X_AUTH_SUCCESS', connected: true }, window.location.origin);
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          // Immediately try to close the window
+          // This works if window was opened via window.open() without noopener
+          window.close();
+          
+          // Fallback: if window doesn't close, redirect to blank page
+          setTimeout(function() {
+            if (!document.hidden) {
+              // Window didn't close, redirect to blank page instead of home
+              window.location.href = 'about:blank';
+            }
+          }, 200);
+        </script>
+        <p style="font-family: sans-serif; text-align: center; padding: 20px;">
+          Authentication successful!<br>
+          This window should close automatically...
+        </p>
+      </body>
+    </html>
+  `;
+
+  const response = new NextResponse(html, {
+    headers: {
+      "Content-Type": "text/html",
+    },
+  });
+
   response.cookies.set({
     name: STATE_COOKIE,
     value: "",
@@ -177,12 +231,10 @@ export async function GET(request: NextRequest) {
   response.cookies.set({
     name: PROFILE_COOKIE,
     value: serializeProfile(profile),
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...cookieOptions,
     maxAge: 60 * 60 * 24 * 30,
   });
+
   return response;
 }
 

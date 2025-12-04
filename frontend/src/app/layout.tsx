@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Anton } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { DynamicWrapper } from "./dynamicWrapper";
 import { NavBar } from "@/components/nav-bar";
 import { PreloadSequence } from "@/components/preload-sequence";
 import { OnboardingScreen } from "@/components/onboarding-screen";
+import { Header } from "@/components/home/header";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,6 +15,12 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const anton = Anton({
+  variable: "--font-anton",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -54,14 +61,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} text-foreground antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${anton.variable} text-foreground antialiased`}
       >
         <Providers>
           <DynamicWrapper>
             <PreloadSequence>
               <OnboardingScreen>
-                <div className="min-h-screen pb-32">{children}</div>
-                <NavBar />
+                <div className="min-h-screen bg-white">
+                  <Header />
+                  <div className="pb-10">{children}</div>
+                  <NavBar />
+                </div>
               </OnboardingScreen>
             </PreloadSequence>
           </DynamicWrapper>

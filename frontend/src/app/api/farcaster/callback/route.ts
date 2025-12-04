@@ -117,8 +117,50 @@ export async function GET(request: NextRequest) {
     pfpUrl: rawProfile.pfp_url ?? rawProfile.pfpUrl ?? null,
   };
 
-  redirectTarget.searchParams.set("fcAuth", "connected");
-  const response = NextResponse.redirect(redirectTarget);
+  // Always return HTML that closes the window and notifies the parent
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Farcaster Authentication Successful</title>
+      </head>
+      <body>
+        <script>
+          // Try to notify parent window first
+          try {
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({ type: 'FARCASTER_AUTH_SUCCESS', connected: true }, window.location.origin);
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          // Immediately try to close the window
+          // This works if window was opened via window.open() without noopener
+          window.close();
+          
+          // Fallback: if window doesn't close, redirect to blank page
+          setTimeout(function() {
+            if (!document.hidden) {
+              // Window didn't close, redirect to blank page instead of home
+              window.location.href = 'about:blank';
+            }
+          }, 200);
+        </script>
+        <p style="font-family: sans-serif; text-align: center; padding: 20px;">
+          Authentication successful!<br>
+          This window should close automatically...
+        </p>
+      </body>
+    </html>
+  `;
+
+  const response = new NextResponse(html, {
+    headers: {
+      "Content-Type": "text/html",
+    },
+  });
+
   clearStateCookies(response);
   response.cookies.set({
     name: FARCASTER_PROFILE_COOKIE,

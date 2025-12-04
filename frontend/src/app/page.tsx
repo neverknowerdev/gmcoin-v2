@@ -1,6 +1,5 @@
-import { MiniAppHome } from "@/components/home";
+import HomePage from "./home/page";
 import { VerificationHandler } from "@/components/verification-handler";
-import { VerificationDebug } from "@/components/verification-debug";
 import { ChainWarning } from "@/components/chain-warning";
 
 export default function Home() {
@@ -8,8 +7,7 @@ export default function Home() {
     <main className="mx-auto max-w-md">
       <ChainWarning />
       <VerificationHandler />
-      <MiniAppHome />
-      {process.env.NODE_ENV === "development" && <VerificationDebug />}
+      <HomePage />
     </main>
   );
 }
