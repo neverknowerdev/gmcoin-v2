@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   useMiniKit,
   useOpenUrl,
@@ -14,6 +15,7 @@ import { ProfileActions } from "@/components/profile/profile-actions";
 import type { XProfile } from "@/types/social";
 
 export default function ProfilePage() {
+  const router = useRouter();
   const { context } = useMiniKit();
   const openUrl = useOpenUrl();
   const [notifications, setNotifications] = useState(true);
@@ -45,24 +47,24 @@ export default function ProfilePage() {
     [context?.user?.fid]
   );
 
-  const refreshXConnection = useCallback(async () => {
-    try {
-      const response = await fetch("/api/x/status", { cache: "no-store" });
-      if (!response.ok) return;
-      const payload = (await response.json()) as {
-        connected: boolean;
-        profile?: XProfile;
-      };
-      setXConnection(payload.connected ? payload.profile ?? null : null);
-    } catch (error) {
-      console.error("Unable to load X auth status", error);
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    void refreshXConnection();
-  }, [refreshXConnection]);
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/x/status", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          connected: boolean;
+          profile?: XProfile;
+        };
+        setXConnection(payload.connected ? payload.profile ?? null : null);
+      } catch (error) {
+        console.error("Unable to load X auth status", error);
+      }
+    };
+    void refresh();
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -71,8 +73,21 @@ export default function ProfilePage() {
     if (!param) return;
     currentUrl.searchParams.delete("xAuth");
     window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
-    void refreshXConnection();
-  }, [refreshXConnection]);
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/x/status", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          connected: boolean;
+          profile?: XProfile;
+        };
+        setXConnection(payload.connected ? payload.profile ?? null : null);
+      } catch (error) {
+        console.error("Unable to load X auth status", error);
+      }
+    };
+    void refresh();
+  }, []);
 
   const handleConnectX = useCallback(() => {
     const targetPath = "/api/x/connect";
@@ -128,7 +143,7 @@ export default function ProfilePage() {
       <SettingsList
         notifications={notifications}
         onNotificationsToggle={setNotifications}
-        onEpochHistory={() => console.log("Epoch History clicked")}
+        onEpochHistory={() => router.push("/epoch-history")}
         onLanguage={() => console.log("Language clicked")}
         onAbout={() => console.log("About GM clicked")}
         onPrivacy={() => console.log("Privacy clicked")}

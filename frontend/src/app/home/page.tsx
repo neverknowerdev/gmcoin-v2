@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useMiniKit,
@@ -22,6 +23,7 @@ import { DynamicConnectButton } from "@dynamic-labs/sdk-react-core";
 import type { XProfile } from "@/types/social";
 
 export default function HomePage() {
+  const router = useRouter();
   const { context, setMiniAppReady } = useMiniKit();
   const { signIn } = useAuthenticate(
     process.env.NEXT_PUBLIC_MINIAPP_DOMAIN || undefined,
@@ -301,7 +303,7 @@ export default function HomePage() {
           totalDays={7}
           mintingDifficulty="100 GM"
           onHowItWorks={() => console.log("How it works clicked")}
-          onViewHistory={() => console.log("View epoch history")}
+          onViewHistory={() => router.push("/epoch-history")}
         />
         
         <TokenizationCardNew
