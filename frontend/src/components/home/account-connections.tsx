@@ -34,7 +34,7 @@ export function AccountConnections({
           <p className="text-xs text-gray-500">Link your X account</p>
         </div>
         {xConnection ? (
-          <div className="flex-shrink-0 rounded-full bg-green-500 px-4 py-2">
+          <div className="flex-shrink-0 rounded-full bg-[#84D65B] px-4 py-2">
             <span className="text-sm font-medium text-black">✓ Connected</span>
           </div>
         ) : (
@@ -76,7 +76,7 @@ export function AccountConnections({
           <p className="text-xs text-gray-500">Link your Forecaster account</p>
         </div>
         {isFarcasterConnected ? (
-          <div className="flex-shrink-0 rounded-full bg-green-500 px-4 py-2">
+          <div className="flex-shrink-0 rounded-full bg-[#84D65B] px-4 py-2">
             <span className="text-sm font-medium text-black">✓ Connected</span>
           </div>
         ) : (

@@ -94,7 +94,7 @@ export function SettingsList({
             className="w-full flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm border border-gray-100 hover:bg-gray-50 transition"
           >
             <div className="flex items-center gap-3">
-              <setting.icon className="h-5 w-5 text-black" />
+              <setting.icon className="h-5 w-5 text-black bg-gray-200 rounded-xl p-1" />
               <span className="text-base font-semibold text-black">
                 {setting.label}
               </span>
@@ -109,7 +109,7 @@ export function SettingsList({
                   }
                 }}
                 className={`relative h-6 w-12 rounded-full transition ${
-                  setting.toggleValue ? "bg-green-500" : "bg-gray-300"
+                  setting.toggleValue ? "bg-[#84D65B]" : "bg-gray-300"
                 }`}
               >
                 <span
