@@ -124,7 +124,7 @@ async function main() {
     // 4. Deploy Treasury
     console.log("\n=== Deploying Treasury ===");
     const TreasuryFactory = await ethers.getContractFactory("GMTreasury");
-    const treasury = await TreasuryFactory.deploy();
+    const treasury = await TreasuryFactory.deploy(owner);
     await treasury.waitForDeployment();
     const treasuryAddressDeployed = await treasury.getAddress();
     console.log("Treasury deployed:", treasuryAddressDeployed);

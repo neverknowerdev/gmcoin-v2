@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
-import type { GMCoinImplementation } from "../typechain-types";
-import { normalizeSalt, predictCreate3DeployedAddress } from "./utils/create3";
+import type { GMCoinImplementation } from "../../typechain-types";
+import { normalizeSalt, predictCreate3DeployedAddress } from "../utils/create3";
 
 async function main() {
 
@@ -35,13 +35,6 @@ async function main() {
         console.log("Using existing Create3Deployer:", create3DeployerAddress);
         const Create3DeployerFactory = await ethers.getContractFactory("Create3Deployer");
         create3 = Create3DeployerFactory.attach(create3DeployerAddress).connect(deployer);
-    } else {
-        console.log("Deploying Create3Deployer...");
-        const Create3DeployerFactory = await ethers.getContractFactory("Create3Deployer");
-        create3 = await Create3DeployerFactory.deploy();
-        await create3.waitForDeployment();
-        create3DeployerAddress = await create3.getAddress();
-        console.log("Create3Deployer deployed at:", create3DeployerAddress);
     }
 
     if (!create3DeployerAddress) {
@@ -103,7 +96,7 @@ async function main() {
     // 4) Quick sanity read via proxy
     const gmcoin = GMCoinImplementationFactory.attach(proxyAddress).connect(
         deployer
-    ) as GMCoinImplementation;
+    ) as unknown as GMCoinImplementation;
     console.log("GMCoin name via proxy:", await gmcoin.name());
     console.log("GMCoin symbol via proxy:", await gmcoin.symbol());
 }

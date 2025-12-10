@@ -134,12 +134,12 @@ export async function deployGMCoin(
 /**
  * Deploys Treasury (regular contract, not upgradeable)
  */
-export async function deployTreasury(deployer?: any): Promise<GMTreasury> {
+export async function deployTreasury(owner?: any): Promise<GMTreasury> {
     const signers = await ethers.getSigners();
-    const deployerSigner = deployer || signers[0];
+    const ownerSigner = owner || signers[0];
 
     const TreasuryFactory = await ethers.getContractFactory("GMTreasury");
-    const treasury = await TreasuryFactory.deploy();
+    const treasury = await TreasuryFactory.deploy(ownerSigner.address);
     await treasury.waitForDeployment();
 
     return treasury as unknown as GMTreasury;

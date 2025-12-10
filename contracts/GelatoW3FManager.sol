@@ -10,26 +10,20 @@ import "./vendor/gelato/AutomateModuleHelper.sol";
 import "./vendor/gelato/AutomateTaskCreatorUpgradeable.sol";
 import "./vendor/gelato/Types.sol";
 
-contract GMWeb3Functions is
+contract GelatoW3FManager is
     ERC165,
     IERC1271,
     Initializable,
     OwnableUpgradeable,
     AutomateTaskCreatorUpgradeable
 {
-    // Gelato configuration struct
-    struct GelatoConfig {
-        address trustedSigner;
-        bytes32 gelatoTaskId_twitterVerification;
-        bytes32 gelatoTaskId_twitterVerificationAuthcode;
-        bytes32 gelatoTaskId_twitterWorker;
-        bytes32 gelatoTaskId_dailyTrigger;
-        bytes32 gelatoTaskId_farcasterVerification;
-        bytes32 gelatoTaskId_farcasterWorker;
-    }
-
-    GelatoConfig public gelatoConfig;
-    address public gelatoAutomateTaskCreator;
+    // Gelato configuration variables
+    bytes32 public gelatoTaskId_twitterVerification;
+    bytes32 public gelatoTaskId_twitterVerificationAuthcode;
+    bytes32 public gelatoTaskId_twitterWorker;
+    bytes32 public gelatoTaskId_dailyTrigger;
+    bytes32 public gelatoTaskId_farcasterVerification;
+    bytes32 public gelatoTaskId_farcasterWorker;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -38,13 +32,13 @@ contract GMWeb3Functions is
 
     event Web3FunctionChanged(bytes32 oldHash, bytes32 newHash);
 
-    function __GelatoWeb3Functions__init(
-        address _owner
-    ) public onlyInitializing {
+    function initialize(
+        address _owner,
+        address _gelatoAutomateTaskCreator
+    ) public initializer {
         __Ownable_init(_owner);
-        gelatoConfig.trustedSigner = _owner;
 
-        __AutomateTaskCreator_init(gelatoAutomateTaskCreator);
+        __AutomateTaskCreator_init(_gelatoAutomateTaskCreator);
     }
 
     function cancelWeb3Function(bytes32 hash) public onlyOwner {
@@ -58,20 +52,17 @@ contract GMWeb3Functions is
     ) public onlyOwner {
         // for devs purpose. Until contact will go to Live finally
         //        require(twitterVerificationTaskId == bytes32(""), "task already initialized");
-        bytes32 oldGelatoId = gelatoConfig.gelatoTaskId_twitterVerification;
-        if (gelatoConfig.gelatoTaskId_twitterVerification != bytes32("")) {
-            _cancelTask(gelatoConfig.gelatoTaskId_twitterVerification);
+        bytes32 oldGelatoId = gelatoTaskId_twitterVerification;
+        if (gelatoTaskId_twitterVerification != bytes32("")) {
+            _cancelTask(gelatoTaskId_twitterVerification);
         }
 
-        gelatoConfig.gelatoTaskId_twitterVerification = createWeb3FunctionEvent(
+        gelatoTaskId_twitterVerification = createWeb3FunctionEvent(
             _w3fHash,
             argsHash,
             topics
         );
-        emit Web3FunctionChanged(
-            oldGelatoId,
-            gelatoConfig.gelatoTaskId_twitterVerification
-        );
+        emit Web3FunctionChanged(oldGelatoId, gelatoTaskId_twitterVerification);
     }
 
     function createTwitterVerificationAuthcodeFunction(
@@ -79,23 +70,19 @@ contract GMWeb3Functions is
         bytes calldata argsHash,
         bytes32[][] calldata topics
     ) public onlyOwner {
-        bytes32 oldGelatoId = gelatoConfig
-            .gelatoTaskId_twitterVerificationAuthcode;
-        if (
-            gelatoConfig.gelatoTaskId_twitterVerificationAuthcode != bytes32("")
-        ) {
-            _cancelTask(gelatoConfig.gelatoTaskId_twitterVerificationAuthcode);
+        bytes32 oldGelatoId = gelatoTaskId_twitterVerificationAuthcode;
+        if (gelatoTaskId_twitterVerificationAuthcode != bytes32("")) {
+            _cancelTask(gelatoTaskId_twitterVerificationAuthcode);
         }
 
-        gelatoConfig
-            .gelatoTaskId_twitterVerificationAuthcode = createWeb3FunctionEvent(
+        gelatoTaskId_twitterVerificationAuthcode = createWeb3FunctionEvent(
             _w3fHash,
             argsHash,
             topics
         );
         emit Web3FunctionChanged(
             oldGelatoId,
-            gelatoConfig.gelatoTaskId_twitterVerificationAuthcode
+            gelatoTaskId_twitterVerificationAuthcode
         );
     }
 
@@ -105,20 +92,17 @@ contract GMWeb3Functions is
         bytes32[][] calldata topics
     ) public onlyOwner {
         //        require(twitterWorkerTaskId == bytes32(""), "task already initialized");
-        bytes32 oldGelatoId = gelatoConfig.gelatoTaskId_twitterWorker;
-        if (gelatoConfig.gelatoTaskId_twitterWorker != bytes32("")) {
-            _cancelTask(gelatoConfig.gelatoTaskId_twitterWorker);
+        bytes32 oldGelatoId = gelatoTaskId_twitterWorker;
+        if (gelatoTaskId_twitterWorker != bytes32("")) {
+            _cancelTask(gelatoTaskId_twitterWorker);
         }
 
-        gelatoConfig.gelatoTaskId_twitterWorker = createWeb3FunctionEvent(
+        gelatoTaskId_twitterWorker = createWeb3FunctionEvent(
             _w3fHash,
             argsHash,
             topics
         );
-        emit Web3FunctionChanged(
-            oldGelatoId,
-            gelatoConfig.gelatoTaskId_twitterWorker
-        );
+        emit Web3FunctionChanged(oldGelatoId, gelatoTaskId_twitterWorker);
     }
 
     function createDailyFunction(
@@ -127,20 +111,17 @@ contract GMWeb3Functions is
         bytes calldata execData
     ) public onlyOwner {
         //        require(dailyTriggerTaskId == bytes32(""), "task already initialized");
-        bytes32 oldGelatoId = gelatoConfig.gelatoTaskId_dailyTrigger;
-        if (gelatoConfig.gelatoTaskId_dailyTrigger != bytes32("")) {
-            _cancelTask(gelatoConfig.gelatoTaskId_dailyTrigger);
+        bytes32 oldGelatoId = gelatoTaskId_dailyTrigger;
+        if (gelatoTaskId_dailyTrigger != bytes32("")) {
+            _cancelTask(gelatoTaskId_dailyTrigger);
         }
 
-        gelatoConfig.gelatoTaskId_dailyTrigger = createWeb3FunctionTime(
+        gelatoTaskId_dailyTrigger = createWeb3FunctionTime(
             startTime,
             interval,
             execData
         );
-        emit Web3FunctionChanged(
-            oldGelatoId,
-            gelatoConfig.gelatoTaskId_dailyTrigger
-        );
+        emit Web3FunctionChanged(oldGelatoId, gelatoTaskId_dailyTrigger);
     }
 
     // Farcaster Gelato functions
@@ -150,20 +131,19 @@ contract GMWeb3Functions is
         bytes calldata argsHash,
         bytes32[][] calldata topics
     ) public onlyOwner {
-        bytes32 oldGelatoId = gelatoConfig.gelatoTaskId_farcasterVerification;
-        if (gelatoConfig.gelatoTaskId_farcasterVerification != bytes32("")) {
-            _cancelTask(gelatoConfig.gelatoTaskId_farcasterVerification);
+        bytes32 oldGelatoId = gelatoTaskId_farcasterVerification;
+        if (gelatoTaskId_farcasterVerification != bytes32("")) {
+            _cancelTask(gelatoTaskId_farcasterVerification);
         }
 
-        gelatoConfig
-            .gelatoTaskId_farcasterVerification = createWeb3FunctionEvent(
+        gelatoTaskId_farcasterVerification = createWeb3FunctionEvent(
             _w3fHash,
             argsHash,
             topics
         );
         emit Web3FunctionChanged(
             oldGelatoId,
-            gelatoConfig.gelatoTaskId_farcasterVerification
+            gelatoTaskId_farcasterVerification
         );
     }
 
@@ -172,20 +152,17 @@ contract GMWeb3Functions is
         bytes calldata argsHash,
         bytes32[][] calldata topics
     ) public onlyOwner {
-        bytes32 oldGelatoId = gelatoConfig.gelatoTaskId_farcasterWorker;
-        if (gelatoConfig.gelatoTaskId_farcasterWorker != bytes32("")) {
-            _cancelTask(gelatoConfig.gelatoTaskId_farcasterWorker);
+        bytes32 oldGelatoId = gelatoTaskId_farcasterWorker;
+        if (gelatoTaskId_farcasterWorker != bytes32("")) {
+            _cancelTask(gelatoTaskId_farcasterWorker);
         }
 
-        gelatoConfig.gelatoTaskId_farcasterWorker = createWeb3FunctionEvent(
+        gelatoTaskId_farcasterWorker = createWeb3FunctionEvent(
             _w3fHash,
             argsHash,
             topics
         );
-        emit Web3FunctionChanged(
-            oldGelatoId,
-            gelatoConfig.gelatoTaskId_farcasterWorker
-        );
+        emit Web3FunctionChanged(oldGelatoId, gelatoTaskId_farcasterWorker);
     }
 
     function createWeb3FunctionEvent(
@@ -260,7 +237,7 @@ contract GMWeb3Functions is
         // Remove the toEthSignedMessageHash call
         address recoveredSigner = ECDSA.recover(hash, signature);
         // Check if the recovered signer matches the trusted signer
-        if (recoveredSigner == gelatoConfig.trustedSigner) {
+        if (recoveredSigner == owner()) {
             return this.isValidSignature.selector; // Return the magic value 0x1626ba7e
         } else {
             return 0xffffffff; // Return invalid signature value
