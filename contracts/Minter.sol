@@ -4,17 +4,9 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import "./lib/Timelock.sol";
-
-contract GMMinter is ERC1967Proxy {
-    constructor(
-        address _logic,
-        bytes memory _data
-    ) ERC1967Proxy(_logic, _data) {}
-}
 
 contract Minter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using Timelock for Timelock.Storage;
@@ -90,10 +82,13 @@ contract Minter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function initialize(
+        address _owner,
         uint256 coinsPerPost,
         address _gelatoAddress,
         uint _epochDays
     ) public initializer {
+        __Ownable_init(_owner);
+
         POINTS_PER_POST = 1;
         POINTS_PER_LIKE = 1;
         POINTS_PER_HASHTAG = 3;

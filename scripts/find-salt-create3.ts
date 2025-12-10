@@ -1,132 +1,155 @@
-import { ethers } from "hardhat";
+import {
+	getAddress,
+	toBeHex,
+	zeroPadValue,
+} from "ethers";
+import { predictCreate3DeployedAddress } from "./utils/create3";
+
+interface SearchTarget {
+	prefix?: string;
+	suffix?: string;
+	exact?: string;
+	found: boolean;
+	label: string;
+}
 
 async function main() {
-
-	const walletAddress = process.env.WALLET_ADDRESS?.toLowerCase();
-	let factoryAddress = process.env.CREATE3_DEPLOYER_ADDRESS;
-
-	const all = await ethers.getSigners();
-	let signer: any;
-
-	if (walletAddress) {
-		signer = all.find((s) => s.address.toLowerCase() === walletAddress) ?? all[0];
-		if (signer.address.toLowerCase() !== walletAddress) {
-			console.log(`Warning: WALLET_ADDRESS ${walletAddress} not found, using first signer`);
-		}
-	} else {
-		signer = all[0];
-		console.log("No WALLET_ADDRESS provided, using first signer");
+	const factoryAddressRaw = process.env.CREATE3_DEPLOYER_ADDRESS;
+	if (!factoryAddressRaw) {
+		throw new Error("CREATE3_DEPLOYER_ADDRESS env variable is required");
 	}
+	const factoryAddress = getAddress(factoryAddressRaw);
 
-	console.log("Using signer:", signer.address);
-
-	const Create3DeployerFactory = await ethers.getContractFactory("Create3Deployer", signer);
-
-	// Deploy Create3Deployer if address not provided
-	if (!factoryAddress) {
-		console.log("CREATE3_DEPLOYER_ADDRESS not provided, deploying Create3Deployer...");
-		const create3Deployer = await Create3DeployerFactory.deploy();
-		await create3Deployer.waitForDeployment();
-		factoryAddress = await create3Deployer.getAddress();
-		console.log("Create3Deployer deployed at:", factoryAddress);
-	} else {
-		console.log("Using existing Create3Deployer:", factoryAddress);
-	}
-
-	const create3 = Create3DeployerFactory.attach(factoryAddress).connect(signer);
-
-	const startsWith = (addr: string, prefix: string) => {
-		// const addrLower = addr.toLowerCase();
-		// Remove "0x" from prefix if present, then check if address starts with "0x" + prefix
-		return addr.startsWith("0x" + prefix);
-	};
-	const endsWith = (addr: string, suffix: string) => addr.toLowerCase().endsWith(suffix.toLowerCase());
-
+	const targets = buildTargetsFromEnv();
+	const totalTargets = targets.length;
 	const progressEvery = Number(process.env.PROGRESS_EVERY ?? "1000");
+	const maxIterations = process.env.MAX_ITERATIONS
+		? BigInt(process.env.MAX_ITERATIONS)
+		: undefined;
 
-	// Support both single PREFIX/SUFFIX and array of prefix-suffix pairs
-	// For array: PREFIX_SUFFIX_PAIRS='[{"prefix":"abc","suffix":"123"},{"prefix":"def","suffix":"456"}]'
-	const prefixSuffixPairsJson = process.env.PREFIX_SUFFIX_PAIRS;
-	let searchTargets: Array<{ prefix?: string; suffix?: string; found?: boolean }> = [];
-
-	if (prefixSuffixPairsJson) {
-		try {
-			searchTargets = JSON.parse(prefixSuffixPairsJson);
-			if (!Array.isArray(searchTargets)) {
-				throw new Error("PREFIX_SUFFIX_PAIRS must be a JSON array");
-			}
-		} catch (e) {
-			throw new Error(`Invalid PREFIX_SUFFIX_PAIRS JSON: ${e}`);
-		}
-	} else {
-		// Fallback to single PREFIX/SUFFIX for backward compatibility
-		const prefix = process.env.PREFIX;
-		const suffix = process.env.SUFFIX;
-		if (!prefix && !suffix) {
-			throw new Error("At least one of PREFIX or SUFFIX must be provided, or use PREFIX_SUFFIX_PAIRS");
-		}
-		searchTargets = [{ prefix, suffix, found: false }];
-	}
-
-	// Validate all targets have at least prefix or suffix
-	for (const target of searchTargets) {
-		if (!target.prefix && !target.suffix) {
-			throw new Error("Each search target must have at least one of prefix or suffix");
-		}
-		target.found = false;
-	}
-
-	console.log("Search criteria:");
-	searchTargets.forEach((target, idx) => {
-		console.log(`  Target ${idx + 1}:`);
-		if (target.prefix) console.log("    Prefix:", target.prefix);
-		if (target.suffix) console.log("    Suffix:", target.suffix);
-	});
-
-	let startNumber = process.env.START_NUMBER ? BigInt(process.env.START_NUMBER) : 0n;
-	let i = startNumber;
-	console.log("Starting from:", i.toString());
-	const totalTargets = searchTargets.length;
+	let current = process.env.START_NUMBER ? BigInt(process.env.START_NUMBER) : 0n;
 	let foundCount = 0;
 
-	for (; ;) {
-		const salt = ethers.zeroPadValue(ethers.toBeHex(i), 32);
-		const predicted = await create3.getDeployedAddress(salt);
+	console.log("Searching salts for factory:", factoryAddress);
+	console.log("Targets:");
+	for (const target of targets) {
+		console.log(`  - ${target.label}`);
+	}
+	console.log(`Starting at nonce: ${current}`);
 
-		// Check each target that hasn't been found yet
-		for (let idx = 0; idx < searchTargets.length; idx++) {
-			const target = searchTargets[idx];
+	while (maxIterations === undefined || current < maxIterations) {
+		const salt = zeroPadValue(toBeHex(current), 32);
+		const predicted = predictCreate3DeployedAddress(factoryAddress, salt);
+
+		for (const target of targets) {
 			if (target.found) continue;
-
-			const matchesPrefix = target.prefix ? startsWith(predicted, target.prefix) : true;
-			const matchesSuffix = target.suffix ? endsWith(predicted, target.suffix) : true;
-
-			if (matchesPrefix && matchesSuffix) {
+			if (matchesTarget(predicted, target)) {
 				target.found = true;
 				foundCount++;
-				console.log(`\n✓ Found target ${idx + 1}!`);
+				console.log(`\n✓ Found ${target.label}`);
 				console.log("  Salt:", salt);
-				console.log("  Predicted:", predicted);
-				console.log("  Iterations:", i.toString());
-				console.log(`  Progress: ${foundCount}/${totalTargets} found\n`);
-
-				// If all targets found, exit
-				if (foundCount === totalTargets) {
-					console.log("All targets found! Exiting...");
-					break;
-				}
+				console.log("  Address:", predicted);
+				console.log("  Iterations:", current.toString());
+				break;
 			}
 		}
 
-		// Exit if all found
 		if (foundCount === totalTargets) {
-			break;
+			console.log("\nAll targets found. Exiting.");
+			return;
 		}
 
-		if (progressEvery > 0 && i % BigInt(progressEvery) === 0n) {
-			console.log(`Checked: ${i.toString()} | Found: ${foundCount}/${totalTargets} | Current: ${predicted}`);
+		if (progressEvery > 0 && current % BigInt(progressEvery) === 0n) {
+			console.log(
+				`Checked ${current.toString()} salts | Found ${foundCount}/${totalTargets} | Last: ${predicted}`
+			);
 		}
-		i += 1n;
+
+		current += 1n;
+	}
+
+	console.log("\nFinished search without finding every target.");
+}
+
+function buildTargetsFromEnv(): SearchTarget[] {
+	const targets: SearchTarget[] = [];
+
+	const jsonAddresses = process.env.TARGET_ADDRESSES;
+	const singleAddress = process.env.TARGET_ADDRESS;
+	if (jsonAddresses || singleAddress) {
+		const addresses = jsonAddresses
+			? parseJsonArray(jsonAddresses, "TARGET_ADDRESSES")
+			: [singleAddress as string];
+		for (const addr of addresses) {
+			const checksum = getAddress(addr);
+			targets.push({
+				exact: checksum.toLowerCase(),
+				found: false,
+				label: `exact ${checksum}`,
+			});
+		}
+		return targets;
+	}
+
+	const pairsJson = process.env.PREFIX_SUFFIX_PAIRS;
+	if (pairsJson) {
+		const parsed = parseJsonArray(pairsJson, "PREFIX_SUFFIX_PAIRS");
+		for (const [index, entry] of parsed.entries()) {
+			if (!entry.prefix && !entry.suffix) {
+				throw new Error(`Entry ${index} requires prefix or suffix`);
+			}
+			targets.push({
+				prefix: sanitizeFragment(entry.prefix),
+				suffix: sanitizeFragment(entry.suffix),
+				found: false,
+				label: `prefix=${entry.prefix ?? ""} suffix=${entry.suffix ?? ""}`,
+			});
+		}
+		return targets;
+	}
+
+	const prefix = process.env.PREFIX;
+	const suffix = process.env.SUFFIX;
+	if (!prefix && !suffix) {
+		throw new Error(
+			"Provide TARGET_ADDRESS / TARGET_ADDRESSES or at least one of PREFIX/SUFFIX/PREFIX_SUFFIX_PAIRS"
+		);
+	}
+	targets.push({
+		prefix: sanitizeFragment(prefix),
+		suffix: sanitizeFragment(suffix),
+		found: false,
+		label: `prefix=${prefix ?? ""} suffix=${suffix ?? ""}`,
+	});
+	return targets;
+}
+
+function matchesTarget(address: string, target: SearchTarget): boolean {
+	const candidate = address;
+	const exactMatch = target.exact ? candidate === target.exact : true;
+	const prefixMatch = target.prefix
+		? candidate.startsWith("0x" + target.prefix)
+		: true;
+	const suffixMatch = target.suffix
+		? candidate.endsWith(target.suffix)
+		: true;
+	return exactMatch && prefixMatch && suffixMatch;
+}
+
+function sanitizeFragment(value?: string): string | undefined {
+	if (!value) return undefined;
+	return value.replace(/^0x/, "").toLowerCase();
+}
+
+function parseJsonArray(raw: string, label: string): any[] {
+	try {
+		const parsed = JSON.parse(raw);
+		if (!Array.isArray(parsed)) {
+			throw new Error();
+		}
+		return parsed;
+	} catch (err) {
+		throw new Error(`Invalid ${label} JSON: ${err}`);
 	}
 }
 
@@ -134,5 +157,4 @@ main().catch((err) => {
 	console.error(err);
 	process.exitCode = 1;
 });
-
 

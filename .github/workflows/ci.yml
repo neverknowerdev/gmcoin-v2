@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'yarn'
+        cache-dependency-path: yarn.lock
+    
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+      
+    - name: Compile contracts
+      run: npx hardhat compile
+      
+    - name: Run all Hardhat tests
+      run: yarn hardhat test
+      env:
+        # Use hardhat network for testing - no external RPC needed
+        HARDHAT_NETWORK: hardhat
+
