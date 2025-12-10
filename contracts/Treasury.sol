@@ -9,7 +9,9 @@ contract GMTreasury is Ownable {
     uint256 public unlockTime = block.timestamp + 90 days;
     uint8 public withdrawalCount = 0;
 
-    constructor() Ownable(msg.sender) {}
+    /// @notice Constructor that sets the initial owner.
+    /// @param initialOwner The address that will be the initial owner.
+    constructor(address initialOwner) Ownable(initialOwner) {}
 
     event TokensWithdrawn(address indexed owner, uint256 amount);
     event TokenSet(address indexed token);

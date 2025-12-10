@@ -1,0 +1,198 @@
+name: 'Deploy Smart Contracts with Cache'
+description: 'Deploy smart contracts (AccountManager, Minter, GMCoin, Treasury) to Base Sepolia with caching support'
+inputs:
+  branch_name:
+    description: 'Branch name for cache key'
+    required: true
+  base_sepolia_rpc_url:
+    description: 'Base Sepolia RPC URL'
+    required: true
+  deployer_private_key:
+    description: 'Deployer private key'
+    required: true
+  etherscan_api_key:
+    description: 'Etherscan API key'
+    required: true
+  w3f_manager_address:
+    description: 'W3F Manager address (constant, already deployed)'
+    required: true
+  w3f_dedicated_msg_sender:
+    description: 'W3F Dedicated Message Sender address (constant)'
+    required: true
+  force_deploy:
+    description: 'Force deployment even if cache exists'
+    required: false
+    default: 'false'
+outputs:
+  account_manager_address:
+    description: 'Deployed AccountManager proxy address'
+    value: ${{ steps.set-output.outputs.account_manager_address }}
+  minter_address:
+    description: 'Deployed Minter proxy address'
+    value: ${{ steps.set-output.outputs.minter_address }}
+  gmcoin_address:
+    description: 'Deployed GMCoin proxy address'
+    value: ${{ steps.set-output.outputs.gmcoin_address }}
+  treasury_address:
+    description: 'Deployed Treasury address'
+    value: ${{ steps.set-output.outputs.treasury_address }}
+  isDeployed:
+    description: 'Whether new contracts were deployed (not from cache)'
+    value: ${{ steps.set-output.outputs.isDeployed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Calculate contracts hash
+      id: contracts-hash
+      shell: bash
+      run: |
+        CONTRACTS_HASH=$(find contracts -type f -exec sha256sum {} \; | sort -k 2 | sha256sum | cut -d' ' -f1)
+        echo "hash=$CONTRACTS_HASH" >> $GITHUB_OUTPUT
+        echo "📋 Contracts hash: $CONTRACTS_HASH"
+
+    - name: Restore contract cache
+      id: cache-contract
+      uses: actions/cache@v4
+      with:
+        path: contract-cache.json
+        key: contract-cache-${{ inputs.branch_name }}-${{ steps.contracts-hash.outputs.hash }}
+
+    - name: Load cached contract addresses
+      id: load-cache
+      if: steps.cache-contract.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        FORCE_DEPLOY="${{ inputs.force_deploy }}"
+        
+        if [ "$FORCE_DEPLOY" = "true" ]; then
+          echo "🔨 Force deploy is enabled, will deploy"
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        if [ -f contract-cache.json ]; then
+          CACHED_HASH=$(jq -r '.hash' contract-cache.json 2>/dev/null || echo "")
+          CACHED_ACCOUNT_MANAGER=$(jq -r '.account_manager_address' contract-cache.json 2>/dev/null || echo "")
+          CACHED_MINTER=$(jq -r '.minter_address' contract-cache.json 2>/dev/null || echo "")
+          CACHED_GMCOIN=$(jq -r '.gmcoin_address' contract-cache.json 2>/dev/null || echo "")
+          CACHED_TREASURY=$(jq -r '.treasury_address' contract-cache.json 2>/dev/null || echo "")
+          CURRENT_HASH="${{ steps.contracts-hash.outputs.hash }}"
+          
+          if [ "$CACHED_HASH" = "$CURRENT_HASH" ] && \
+             [ -n "$CACHED_ACCOUNT_MANAGER" ] && [ "$CACHED_ACCOUNT_MANAGER" != "null" ] && \
+             [ -n "$CACHED_MINTER" ] && [ "$CACHED_MINTER" != "null" ] && \
+             [ -n "$CACHED_GMCOIN" ] && [ "$CACHED_GMCOIN" != "null" ] && \
+             [ -n "$CACHED_TREASURY" ] && [ "$CACHED_TREASURY" != "null" ]; then
+            echo "account_manager_address=$CACHED_ACCOUNT_MANAGER" >> $GITHUB_OUTPUT
+            echo "minter_address=$CACHED_MINTER" >> $GITHUB_OUTPUT
+            echo "gmcoin_address=$CACHED_GMCOIN" >> $GITHUB_OUTPUT
+            echo "treasury_address=$CACHED_TREASURY" >> $GITHUB_OUTPUT
+            echo "isDeployed=false" >> $GITHUB_OUTPUT
+            echo "✅ Using cached contract addresses"
+            echo "✅ Hash matches, skipping deployment"
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Hash mismatch or invalid cache, will deploy"
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Set deploy flag for cache miss
+      id: cache-miss
+      if: steps.cache-contract.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        FORCE_DEPLOY="${{ inputs.force_deploy }}"
+        
+        if [ "$FORCE_DEPLOY" = "true" ]; then
+          echo "🔨 Force deploy is enabled, will deploy"
+        else
+          echo "⚠️ Cache miss, will deploy"
+        fi
+        echo "should_deploy=true" >> $GITHUB_OUTPUT
+
+    - name: Deploy smart contracts to Base Sepolia
+      id: deploy
+      if: steps.load-cache.outputs.should_deploy == 'true' || steps.cache-miss.outputs.should_deploy == 'true'
+      shell: bash
+      env:
+        BASE_SEPOLIA_RPC_URL: ${{ inputs.base_sepolia_rpc_url }}
+        BASE_SEPOLIA_PRIVATE_KEY: ${{ inputs.deployer_private_key }}
+        ETHERSCAN_API_KEY: ${{ inputs.etherscan_api_key }}
+        W3F_MANAGER_ADDRESS: ${{ inputs.w3f_manager_address }}
+        W3F_DEDICATED_MSG_SENDER: ${{ inputs.w3f_dedicated_msg_sender }}
+        GMCOIN_OWNER: ${{ secrets.GMCOIN_OWNER }}
+        GMCOIN_FEE_ADDRESS: ${{ secrets.GMCOIN_FEE_ADDRESS }}
+        GMCOIN_TREASURY_ADDRESS: ${{ secrets.GMCOIN_TREASURY_ADDRESS }}
+        GMCOIN_COINS_MULTIPLICATOR: ${{ secrets.GMCOIN_COINS_MULTIPLICATOR }}
+        GMCOIN_EPOCH_DAYS: ${{ secrets.GMCOIN_EPOCH_DAYS }}
+        GMCOIN_TIME_DELAY: ${{ secrets.GMCOIN_TIME_DELAY }}
+      run: |
+        npx hardhat run scripts/deploy-testnet.ts --network baseSepolia
+        
+        # Extract contract addresses from deployment.json
+        if [ -f deployment.json ]; then
+          NETWORK_NAME="baseSepolia"
+          ACCOUNT_MANAGER=$(jq -r ".[\"$NETWORK_NAME\"].accountManagerAddress" deployment.json 2>/dev/null || echo "")
+          MINTER=$(jq -r ".[\"$NETWORK_NAME\"].minterAddress" deployment.json 2>/dev/null || echo "")
+          GMCOIN=$(jq -r ".[\"$NETWORK_NAME\"].gmCoinAddress" deployment.json 2>/dev/null || echo "")
+          TREASURY=$(jq -r ".[\"$NETWORK_NAME\"].treasuryAddress" deployment.json 2>/dev/null || echo "")
+        fi
+        
+        if [ -z "$ACCOUNT_MANAGER" ] || [ "$ACCOUNT_MANAGER" = "null" ] || \
+           [ -z "$MINTER" ] || [ "$MINTER" = "null" ] || \
+           [ -z "$GMCOIN" ] || [ "$GMCOIN" = "null" ] || \
+           [ -z "$TREASURY" ] || [ "$TREASURY" = "null" ]; then
+          echo "⚠️ Error: Could not extract all contract addresses from deployment"
+          exit 1
+        fi
+        
+        echo "account_manager_address=$ACCOUNT_MANAGER" >> $GITHUB_OUTPUT
+        echo "minter_address=$MINTER" >> $GITHUB_OUTPUT
+        echo "gmcoin_address=$GMCOIN" >> $GITHUB_OUTPUT
+        echo "treasury_address=$TREASURY" >> $GITHUB_OUTPUT
+        echo "isDeployed=true" >> $GITHUB_OUTPUT
+        echo "✅ Contracts deployed successfully"
+        
+        # Save contract addresses and hash to cache file
+        CONTRACTS_HASH="${{ steps.contracts-hash.outputs.hash }}"
+        jq -n \
+          --arg hash "$CONTRACTS_HASH" \
+          --arg accountManager "$ACCOUNT_MANAGER" \
+          --arg minter "$MINTER" \
+          --arg gmcoin "$GMCOIN" \
+          --arg treasury "$TREASURY" \
+          '{hash: $hash, account_manager_address: $accountManager, minter_address: $minter, gmcoin_address: $gmcoin, treasury_address: $treasury}' > contract-cache.json
+
+    - name: Save contract cache
+      if: steps.deploy.outcome == 'success'
+      uses: actions/cache@v4
+      with:
+        path: contract-cache.json
+        key: contract-cache-${{ inputs.branch_name }}-${{ steps.contracts-hash.outputs.hash }}
+
+    - name: Set contract address outputs
+      id: set-output
+      shell: bash
+      run: |
+        # Get contract addresses from environment (set by either deploy or load-cache step)
+        if [ -n "${{ steps.deploy.outputs.account_manager_address }}" ]; then
+          echo "account_manager_address=${{ steps.deploy.outputs.account_manager_address }}" >> $GITHUB_OUTPUT
+          echo "minter_address=${{ steps.deploy.outputs.minter_address }}" >> $GITHUB_OUTPUT
+          echo "gmcoin_address=${{ steps.deploy.outputs.gmcoin_address }}" >> $GITHUB_OUTPUT
+          echo "treasury_address=${{ steps.deploy.outputs.treasury_address }}" >> $GITHUB_OUTPUT
+          echo "isDeployed=true" >> $GITHUB_OUTPUT
+        elif [ -n "${{ steps.load-cache.outputs.account_manager_address }}" ]; then
+          echo "account_manager_address=${{ steps.load-cache.outputs.account_manager_address }}" >> $GITHUB_OUTPUT
+          echo "minter_address=${{ steps.load-cache.outputs.minter_address }}" >> $GITHUB_OUTPUT
+          echo "gmcoin_address=${{ steps.load-cache.outputs.gmcoin_address }}" >> $GITHUB_OUTPUT
+          echo "treasury_address=${{ steps.load-cache.outputs.treasury_address }}" >> $GITHUB_OUTPUT
+          echo "isDeployed=false" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Error: No contract addresses were set"
+          exit 1
+        fi
+

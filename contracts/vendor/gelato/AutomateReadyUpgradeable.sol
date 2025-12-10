@@ -32,10 +32,10 @@ abstract contract AutomateReadyUpgradeable is Initializable {
      * @dev
      * _taskCreator is the address which will create tasks for this contract.
      */
-    function __AutomateReady_init(address _taskCreator, address _automate)
-    internal
-    onlyInitializing
-    {
+    function __AutomateReady_init(
+        address _taskCreator,
+        address _automate
+    ) internal onlyInitializing {
         automate = IAutomate(_automate);
 
         IGelato gelato = IGelato(automate.gelato());
@@ -49,8 +49,8 @@ abstract contract AutomateReadyUpgradeable is Initializable {
         address opsProxyFactoryAddress = IProxyModule(proxyModuleAddress)
             .opsProxyFactory();
 
-        (dedicatedMsgSender,) = IOpsProxyFactory(opsProxyFactoryAddress)
-        .getProxyOf(_taskCreator);
+        (dedicatedMsgSender, ) = IOpsProxyFactory(opsProxyFactoryAddress)
+            .getProxyOf(_taskCreator);
     }
 
     /**
@@ -61,7 +61,7 @@ abstract contract AutomateReadyUpgradeable is Initializable {
      */
     function _transfer(uint256 _fee, address _feeToken) internal {
         if (_feeToken == ETH) {
-            (bool success,) = feeCollector.call{value: _fee}("");
+            (bool success, ) = feeCollector.call{value: _fee}("");
             require(success, "_transfer: ETH transfer failed");
         } else {
             SafeERC20.safeTransfer(IERC20(_feeToken), feeCollector, _fee);
@@ -69,9 +69,9 @@ abstract contract AutomateReadyUpgradeable is Initializable {
     }
 
     function _getFeeDetails()
-    internal
-    view
-    returns (uint256 fee, address feeToken)
+        internal
+        view
+        returns (uint256 fee, address feeToken)
     {
         (fee, feeToken) = automate.getFeeDetails();
     }
