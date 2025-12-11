@@ -2,13 +2,27 @@
 
 import Image from "next/image";
 
-export function HistoryBalanceSection() {
+interface HistoryBalanceSectionProps {
+  balance?: string;
+}
+
+export function HistoryBalanceSection({ balance = "0" }: HistoryBalanceSectionProps) {
+  // Format balance: "1234.567" -> "1,234.567" or "1234" -> "1,234"
+  const formatBalance = (bal: string) => {
+    const num = parseFloat(bal);
+    if (isNaN(num)) return "0";
+    return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  };
+
+  const [wholePart, decimalPart] = balance.split('.');
+  const formattedWhole = formatBalance(wholePart);
+
   return (
     <div className="relative z-10 px-4 py-2 pt-4">
       <p className="text-sm text-gray-600 mb-1 mt-10">Your balance:</p>
       <div className="flex items-center gap-2 mb-2">
         <p className="text-6xl font-bold text-black" style={{ fontFamily: "var(--font-anton), sans-serif" }}>
-          32,822
+          {formattedWhole}
         </p>
         <p className="text-2xl font-bold text-black" style={{ fontFamily: "var(--font-anton), sans-serif" }}>
           GM

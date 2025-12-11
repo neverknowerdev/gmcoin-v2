@@ -53,7 +53,8 @@ runs:
       id: check-migrations
       shell: bash
       run: |
-        if [ -d "migrations" ] && [ "$(ls -A migrations/*.sql 2>/dev/null)" ]; then
+        # Check for migrations directory with either .sql files or run-migrations.sh script
+        if [ -d "migrations" ] && ([ "$(ls -A migrations/*.sql 2>/dev/null)" ] || [ -f "migrations/run-migrations.sh" ]); then
           echo "migrations_exist=true" >> $GITHUB_OUTPUT
           echo "✅ Migrations directory found"
         else
@@ -66,7 +67,15 @@ runs:
       if: steps.check-migrations.outputs.migrations_exist == 'true'
       shell: bash
       run: |
-        MIGRATIONS_HASH=$(find migrations -type f -name "*.sql" -exec sha256sum {} \; | sort -k 2 | sha256sum | cut -d' ' -f1)
+        # Calculate hash of all migration files (.sql files and run-migrations.sh if it exists)
+        HASH_INPUT=""
+        if [ "$(ls -A migrations/*.sql 2>/dev/null)" ]; then
+          HASH_INPUT=$(find migrations -type f -name "*.sql" -exec sha256sum {} \; | sort -k 2)
+        fi
+        if [ -f "migrations/run-migrations.sh" ]; then
+          HASH_INPUT="${HASH_INPUT}$(sha256sum migrations/run-migrations.sh)"
+        fi
+        MIGRATIONS_HASH=$(echo "$HASH_INPUT" | sha256sum | cut -d' ' -f1)
         echo "hash=$MIGRATIONS_HASH" >> $GITHUB_OUTPUT
         echo "📋 Migrations hash: $MIGRATIONS_HASH"
 

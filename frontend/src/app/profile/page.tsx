@@ -13,6 +13,9 @@ import { AccountConnections } from "@/components/home/account-connections";
 import { SettingsList } from "@/components/profile/settings-list";
 import { ProfileActions } from "@/components/profile/profile-actions";
 import type { XProfile } from "@/types/social";
+import { useUserBalance } from "@/hooks/useBalance";
+import { useUserRank, useUserStreak } from "@/hooks/useUserStats";
+import { useWalletConnection } from "@/hooks/useWalletConnection";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -31,6 +34,12 @@ export default function ProfilePage() {
   const isFarcasterConnected = isFarcasterConnectedFromHook && Boolean(farcasterProfile);
   
   const isMiniApp = useMemo(() => Boolean(context), [context]);
+  
+  // Fetch real data
+  const { address } = useWalletConnection();
+  const { data: balanceData } = useUserBalance();
+  const { rank } = useUserRank();
+  const { streakDays } = useUserStreak();
 
   const username = useMemo(
     () => context?.user?.username ?? "username",
@@ -42,10 +51,35 @@ export default function ProfilePage() {
       if (context?.user?.fid) {
         return context.user.fid.toString().padStart(6, '0');
       }
-      return "024939"; // Default mock ID
+      // Try to get user ID from API if wallet is connected
+      if (address && balanceData) {
+        // User exists, use a placeholder format (could be enhanced with actual user ID from API)
+        return address.slice(2, 8).toUpperCase();
+      }
+      return "000000"; // Default placeholder
     },
-    [context?.user?.fid]
+    [context?.user?.fid, address, balanceData]
   );
+  
+  // Format balance
+  const formatBalance = (bal?: string) => {
+    if (!bal) return "0";
+    const num = parseFloat(bal);
+    if (isNaN(num)) return "0";
+    return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  };
+  
+  // Format streak
+  const formatStreak = (days?: number) => {
+    if (!days || days === 0) return "0 days";
+    return `${days} ${days === 1 ? 'day' : 'days'}`;
+  };
+  
+  // Format rank
+  const formatRank = (rankNum?: number) => {
+    if (!rankNum) return "#--";
+    return `#${rankNum}`;
+  };
 
 
   useEffect(() => {
@@ -120,9 +154,9 @@ export default function ProfilePage() {
       <ProfileInfo username={username} gmId={gmId} />
       
       <ProfileStats
-        balance="342,457"
-        streak="10 days"
-        rank="#888"
+        balance={formatBalance(balanceData?.balance)}
+        streak={formatStreak(streakDays)}
+        rank={formatRank(rank)}
       />
       
       <div className="px-4 mb-6">

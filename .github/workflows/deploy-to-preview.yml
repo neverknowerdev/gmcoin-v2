@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - '**.md'
       - '.gitignore'
-      - '.github/**'
 
 jobs:
   deploy-vercel:
@@ -61,7 +60,7 @@ jobs:
       id: setup-database
       uses: ./.github/actions/setup-database
       with:
-        branch_name: ${{ github.head_ref }}
+        branch_name: ${{ github.head_ref || github.ref_name }}
         db_connection_string: ${{ secrets.DB_CONNECTION_STRING }}
         force_deploy: ${{ github.event.action == 'opened' || github.event.action == 'reopened' }}
 
@@ -113,6 +112,16 @@ jobs:
             comment.body.includes('## 🚀 Deployment Complete') &&
             comment.user.type === 'Bot'
           );
+          
+          // Delete all old deployment comments
+          for (const comment of existingComments) {
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: comment.id,
+            });
+            console.log(`Deleted old deployment comment: ${comment.id}`);
+          }
           
           // Create new comment with deployment info
           await github.rest.issues.createComment({

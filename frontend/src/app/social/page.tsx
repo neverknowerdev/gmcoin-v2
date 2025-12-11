@@ -10,6 +10,10 @@ import { AccountConnections } from "@/components/home/account-connections";
 import { InviteFriendsCard } from "@/components/home/invite-friends-card";
 import { LeaderboardCard } from "@/components/home/leaderboard-card";
 import type { XProfile } from "@/types/social";
+import { useLeaderboard } from "@/hooks/useLeaderboard";
+import { useUserRank, useUserStreak } from "@/hooks/useUserStats";
+import { useUserTransactions } from "@/hooks/useTransactions";
+import { useWalletConnection } from "@/hooks/useWalletConnection";
 
 export default function SocialPage() {
   const { context } = useMiniKit();
@@ -25,6 +29,43 @@ export default function SocialPage() {
     isFarcasterConnectedFromHook && Boolean(farcasterProfile);
 
   const isMiniApp = useMemo(() => Boolean(context), [context]);
+  
+  // Fetch real data
+  const { address } = useWalletConnection();
+  const { data: leaderboardData = [] } = useLeaderboard(100);
+  const { streakDays, weekProgress: streakData } = useUserStreak();
+  const { data: transactions = [] } = useUserTransactions();
+  
+  // Calculate social activity stats from transactions
+  const socialStats = useMemo(() => {
+    const gmTweets = transactions.filter(
+      (tx) => tx.platform === "twitter" && tx.type === "minting"
+    ).length;
+    const gmCasts = transactions.filter(
+      (tx) => tx.platform === "farcaster" && tx.type === "minting"
+    ).length;
+    return { gmTweets, gmCasts };
+  }, [transactions]);
+  
+  // Get top 5 leaderboard entries
+  const leaderboardEntries = leaderboardData.slice(0, 5).map((entry) => ({
+    rank: entry.rank,
+    name: entry.wallet.slice(0, 6) + "..." + entry.wallet.slice(-4),
+    amount: parseFloat(entry.balance).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+  }));
+  
+  // Find user's position in leaderboard
+  const userEntry = address
+    ? leaderboardData.find((entry) => entry.wallet.toLowerCase() === address.toLowerCase())
+    : null;
+  
+  const userLeaderboardEntry = userEntry
+    ? {
+        rank: userEntry.rank,
+        name: userEntry.wallet.slice(0, 6) + "..." + userEntry.wallet.slice(-4),
+        amount: parseFloat(userEntry.balance).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      }
+    : undefined;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -96,41 +137,17 @@ export default function SocialPage() {
       window.open(targetPath, "_blank", "noopener,noreferrer");
     }
   }, [isMiniApp, openUrl]);
-  // Mock data - replace with real data later
-  const streakData = [
-    { day: "Su", completed: true, isToday: false },
-    { day: "Mo", completed: true, isToday: false },
-    { day: "Tu", completed: true, isToday: false },
-    { day: "We", completed: true, isToday: false },
-    { day: "Th", completed: false, isToday: false },
-    { day: "Fr", completed: false, isToday: false },
-    { day: "Sa", completed: false, isToday: true },
-  ];
-
-  const leaderboardEntries = [
-    { rank: 1, name: "Name", amount: "100.567,8" },
-    { rank: 2, name: "Name", amount: "100.567,8" },
-    { rank: 3, name: "Name", amount: "100.567,8" },
-    { rank: 4, name: "Name", amount: "100.567,8" },
-    { rank: 5, name: "Name", amount: "100.567,8" },
-  ];
-
-  const userLeaderboardEntry = {
-    rank: 888,
-    name: "Name",
-    amount: "100.567,8",
-  };
 
   return (
     <div className="min-h-screen bg-white pb-32">
-      <StreakCardNew streakDays={10} percentile={5} dayProgress={streakData} />
-      <SocialActivity gmTweets="342" gmCasts="21" />
+      <StreakCardNew streakDays={streakDays} percentile={5} dayProgress={streakData} />
+      <SocialActivity gmTweets={socialStats.gmTweets.toString()} gmCasts={socialStats.gmCasts.toString()} />
       <LeaderboardCard
         entries={leaderboardEntries}
         userEntry={userLeaderboardEntry}
         onViewFull={() => console.log("View full leaderboard")}
       />
-      <EngagementImpact likesReceived="342" reports="21" />
+      <EngagementImpact likesReceived="0" reports="0" />
 
       <AccountConnections
         xConnection={xConnection}

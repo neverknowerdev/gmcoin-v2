@@ -21,6 +21,11 @@ import { VerificationStatus } from "@/components/verification-status";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
 import { DynamicConnectButton } from "@dynamic-labs/sdk-react-core";
 import type { XProfile } from "@/types/social";
+import { useUserBalance } from "@/hooks/useBalance";
+import { useLeaderboard } from "@/hooks/useLeaderboard";
+import { useCurrentEpoch } from "@/hooks/useEpochs";
+import { useGlobalStats, useDailyStats } from "@/hooks/useStats";
+import { useUserStreak } from "@/hooks/useUserStats";
 
 export default function HomePage() {
   const router = useRouter();
@@ -43,6 +48,42 @@ export default function HomePage() {
   const { profile: farcasterProfile } = useProfile();
   
   const isFarcasterConnected = isFarcasterConnectedFromHook && Boolean(farcasterProfile);
+
+  // Fetch real data
+  const { data: balanceData } = useUserBalance();
+  const { data: leaderboardData = [] } = useLeaderboard(100);
+  const { data: currentEpoch } = useCurrentEpoch();
+  const { data: globalStats } = useGlobalStats();
+  const { data: dailyStats = [] } = useDailyStats(7);
+  const { streakDays, weekProgress: streakData } = useUserStreak();
+
+  // Format balance
+  const formatBalance = (bal?: string) => {
+    if (!bal) return "0 GM";
+    const num = parseFloat(bal);
+    if (isNaN(num)) return "0 GM";
+    return `${num.toLocaleString('en-US', { maximumFractionDigits: 2 })} GM`;
+  };
+
+  // Get top 5 leaderboard entries
+  const leaderboardEntries = leaderboardData.slice(0, 5).map((entry) => ({
+    rank: entry.rank,
+    name: entry.wallet.slice(0, 6) + "..." + entry.wallet.slice(-4), // Truncate wallet address
+    amount: parseFloat(entry.balance).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+  }));
+
+  // Find user's position in leaderboard
+  const userEntry = address
+    ? leaderboardData.find((entry) => entry.wallet.toLowerCase() === address.toLowerCase())
+    : null;
+  
+  const userLeaderboardEntry = userEntry
+    ? {
+        rank: userEntry.rank,
+        name: userEntry.wallet.slice(0, 6) + "..." + userEntry.wallet.slice(-4),
+        amount: parseFloat(userEntry.balance).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      }
+    : undefined;
   
   useEffect(() => {
     void setMiniAppReady();
@@ -240,42 +281,33 @@ export default function HomePage() {
     );
   }
 
-  // Mock data - replace with real data later
-  const streakData = [
-    { day: "Su", completed: true, isToday: false },
-    { day: "Mo", completed: true, isToday: false },
-    { day: "Tu", completed: true, isToday: false },
-    { day: "We", completed: true, isToday: false },
-    { day: "Th", completed: false, isToday: false },
-    { day: "Fr", completed: false, isToday: false },
-    { day: "Sa", completed: false, isToday: true },
-  ];
 
-  const leaderboardEntries = [
-    { rank: 1, name: "Name", amount: "100.567,8" },
-    { rank: 2, name: "Name", amount: "100.567,8" },
-    { rank: 3, name: "Name", amount: "100.567,8" },
-    { rank: 4, name: "Name", amount: "100.567,8" },
-    { rank: 5, name: "Name", amount: "100.567,8" },
-  ];
+  // Calculate growth and percentage for tokenization card
+  const calculateGrowth = () => {
+    if (dailyStats.length < 2) return 0;
+    const today = dailyStats[dailyStats.length - 1];
+    const yesterday = dailyStats[dailyStats.length - 2];
+    if (yesterday === 0) return 0;
+    return Math.round(((today - yesterday) / yesterday) * 100);
+  };
 
-  const userLeaderboardEntry = {
-    rank: 888,
-    name: "Name",
-    amount: "100.567,8",
+  const calculateTotalPercentage = () => {
+    if (!globalStats) return 0;
+    const total = parseFloat(globalStats.totalTokenized);
+    return Math.min(100, Math.round((total / 1000000) * 100));
   };
 
   return (
     <div className="">
       <BalanceSection
-        balance="32,822 GM"
-        onHistory={() => console.log("History clicked")}
+        balance={formatBalance(balanceData?.balance)}
+        onHistory={() => router.push("/history")}
         onHowToEarn={() => console.log("How to earn clicked")}
       />
       
       <div className="space-y-4">
         <StreakCardNew
-          streakDays={10}
+          streakDays={streakDays}
           percentile={5}
           dayProgress={streakData}
         />
@@ -297,20 +329,22 @@ export default function HomePage() {
           onInvite={() => console.log("Invite clicked")}
         />
         
+        {currentEpoch && (
         <EpochCard
-          epochNumber={12}
-          currentDay={4}
-          totalDays={7}
-          mintingDifficulty="100 GM"
+            epochNumber={currentEpoch.epochNumber}
+            currentDay={currentEpoch.currentDay}
+            totalDays={currentEpoch.totalDays}
+            mintingDifficulty={currentEpoch.mintingDifficulty}
           onHowItWorks={() => console.log("How it works clicked")}
           onViewHistory={() => router.push("/epoch-history")}
         />
+        )}
         
         <TokenizationCardNew
-          percentage={80}
-          growthToday={12}
-          historical={[45, 62, 55, 68, 57, 66, 70, 75, 80]}
-          onViewStats={() => console.log("View detailed statistics")}
+          percentage={calculateTotalPercentage()}
+          growthToday={calculateGrowth()}
+          historical={dailyStats.map(d => Math.round(d))}
+          onViewStats={() => router.push("/stats")}
         />
       </div>
       
