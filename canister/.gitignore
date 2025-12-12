@@ -1,0 +1,4 @@
+.dfx/
+*.wasm
+*.did
+*.wasm.gz

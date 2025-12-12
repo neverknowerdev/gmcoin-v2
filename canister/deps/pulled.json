@@ -1,0 +1,13 @@
+{
+  "canisters": {
+    "7hfb6-caaaa-aaaar-qadga-cai": {
+      "name": "evm_rpc",
+      "wasm_hash": "f61b3c2970548b611fcc9285eca94aace166e3c295cb98287c9e009a1075d392",
+      "wasm_hash_download": "a7fa72d6c9216054a8860108b35bf766a52d40ccf6055b5d59b6bda9f938035f",
+      "init_guide": "https://internetcomputer.org/docs/current/developer-docs/multi-chain/ethereum/evm-rpc/evm-rpc-canister",
+      "init_arg": null,
+      "candid_args": "(InstallArgs)",
+      "gzip": true
+    }
+  }
+}
