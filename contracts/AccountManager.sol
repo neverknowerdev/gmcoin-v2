@@ -71,6 +71,8 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     // human verified
     mapping(uint256 => HumanVerification) humanVerificationByUserId;
+    // Coinbase verification attestation UIDs
+    mapping(uint256 => bytes32) coinbaseAttestationUIDByUserId;
     // stat
     mapping(uint256 => uint32) createdAtByUserId;
 
@@ -137,6 +139,17 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event FarcasterVerificationResult(
         uint256 indexed farcasterFid,
         address indexed wallet,
+        bool isSuccess,
+        string errorMsg
+    );
+
+    event VerifyCoinbaseRequested(
+        address indexed wallet,
+        bytes32 attestationUID
+    );
+    event CoinbaseVerificationResult(
+        address indexed wallet,
+        bytes32 attestationUID,
         bool isSuccess,
         string errorMsg
     );
@@ -261,6 +274,39 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit FarcasterVerificationResult(farcasterFid, wallet, false, errorMsg);
     }
 
+    // Coinbase verification functions
+    function requestCoinbaseVerification(bytes32 attestationUID) public {
+        emit VerifyCoinbaseRequested(_msgSender(), attestationUID);
+    }
+
+    function coinbaseVerificationError(
+        address wallet,
+        bytes32 attestationUID,
+        string calldata errorMsg
+    ) public onlyGelato {
+        emit CoinbaseVerificationResult(wallet, attestationUID, false, errorMsg);
+    }
+
+    function setCoinbaseVerification(
+        address wallet,
+        bytes32 attestationUID
+    ) public onlyGelato {
+        uint256 userId = userWallets.userIdByWallet(wallet);
+        if (userId == 0) {
+            // If user doesn't exist, create one
+            userId = _createUser(wallet, 0, 0);
+        }
+
+        // Store attestation UID
+        coinbaseAttestationUIDByUserId[userId] = attestationUID;
+        
+        // Set human verification status
+        humanVerificationByUserId[userId] = HumanVerification.CoinbaseVerification;
+        
+        emit HumanVerificationUpdated(userId, HumanVerification.CoinbaseVerification);
+        emit CoinbaseVerificationResult(wallet, attestationUID, true, "");
+    }
+
     // Account management events
     event UserCreated(
         uint256 indexed userId,
@@ -354,6 +400,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint32 createdAt; // Creation timestamp
         uint256 twitterId; // Twitter ID (0 if not linked)
         uint256 farcasterFid; // Farcaster FID (0 if not linked)
+        bytes32 coinbaseAttestationUID; // Coinbase attestation UID (0x0 if not verified)
         // Future social platforms can be added here
     }
 
@@ -368,7 +415,8 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 humanVerificationByUserId[userId],
                 createdAtByUserId[userId],
                 twitterAccounts.accountIdByUserId(userId),
-                farcasterAccounts.accountIdByUserId(userId)
+                farcasterAccounts.accountIdByUserId(userId),
+                coinbaseAttestationUIDByUserId[userId]
             );
     }
 
@@ -394,6 +442,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 userId
     ) public view returns (address) {
         return userWallets.primaryWalletByUserId(userId);
+    }
+
+    function getUserByWallet(
+        address wallet
+    ) public view returns (UnifiedUser memory) {
+        uint256 userId = userWallets.userIdByWallet(wallet);
+        if (userId == 0) revert UserNotExist();
+        return getUnifiedUser(userId);
     }
 
     function _createUser(
@@ -454,6 +510,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         delete userIndexById[userId];
 
         delete humanVerificationByUserId[userId];
+        delete coinbaseAttestationUIDByUserId[userId];
         delete createdAtByUserId[userId];
     }
 

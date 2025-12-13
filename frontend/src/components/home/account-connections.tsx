@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { XProfile } from "@/types/social";
+import { CoinbaseVerificationButton } from "@/components/coinbase-verification-button";
 
 interface AccountConnectionsProps {
   xConnection: XProfile | null;
@@ -101,6 +102,9 @@ export function AccountConnections({
           </button>
         )}
       </div>
+
+      {/* Coinbase Verification Card */}
+      <CoinbaseVerificationButton />
     </div>
   );
 }
