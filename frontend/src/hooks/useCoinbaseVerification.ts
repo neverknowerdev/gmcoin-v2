@@ -1,6 +1,7 @@
 "use client";
 
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useReadContract, useWaitForTransactionReceipt } from "wagmi";
+import { useWriteContractWithBuilderCode } from "./useWriteContractWithBuilderCode";
 import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
 import { useEffect, useState } from "react";
@@ -54,7 +55,7 @@ export function useCoinbaseVerification() {
     data: hash,
     isPending: isRequesting,
     error: requestError 
-  } = useWriteContract();
+  } = useWriteContractWithBuilderCode();
 
   // Wait for transaction
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
