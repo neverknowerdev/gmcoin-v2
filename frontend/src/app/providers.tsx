@@ -3,9 +3,10 @@
 import { SafeArea } from "@coinbase/onchainkit/minikit";
 import { OnchainKitProvider } from "@coinbase/onchainkit";
 import { PropsWithChildren } from "react";
-import { baseSepolia } from "wagmi/chains";
+import { chain } from "@/config/chains";
 import { AuthKitProvider } from "@farcaster/auth-kit";
 import "@farcaster/auth-kit/styles.css";
+import "@coinbase/onchainkit/styles.css";
 
 export function Providers({ children }: PropsWithChildren) {
   // Use the RPC URL that already includes the API key
@@ -25,10 +26,10 @@ export function Providers({ children }: PropsWithChildren) {
     >
       <OnchainKitProvider
         apiKey={apiKey}
-        chain={baseSepolia}
+        chain={chain}
         config={{
           appearance: {
-            name: "GMcoin Mini App",
+            name: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "GMcoin Mini App",
           },
         }}
         miniKit={{
