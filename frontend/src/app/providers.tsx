@@ -9,13 +9,17 @@ import "@farcaster/auth-kit/styles.css";
 import "@coinbase/onchainkit/styles.css";
 
 export function Providers({ children }: PropsWithChildren) {
-  // Use the RPC URL that already includes the API key
-  const baseSepoliaRpcUrl =
-    process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL ?? "https://api.developer.coinbase.com/rpc/v1/base-sepolia/f1PR0fXuOM3NcQ8IuI3U98AiaMzXv-Vl";
+  // Use Base Mainnet RPC URL
+  const baseMainnetRpcUrl =
+    process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL ?? 
+    process.env.NEXT_PUBLIC_BASE_RPC_URL ??
+    "https://mainnet.base.org";
   
-  // Extract API key from RPC URL for OnchainKit
-  // OnchainKit uses the API key to construct its RPC URLs, so we extract it from the provided URL
-  const rpcApiKey = baseSepoliaRpcUrl.split('/').pop() || "";
+  // Extract API key from RPC URL for OnchainKit if using Coinbase RPC
+  // OnchainKit uses the API key to construct its RPC URLs
+  const rpcApiKey = baseMainnetRpcUrl.includes('/rpc/v1/base/') 
+    ? baseMainnetRpcUrl.split('/').pop() || ""
+    : "";
   const apiKey = process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY ?? rpcApiKey;
 
   // Get domain for AuthKit
@@ -29,7 +33,7 @@ export function Providers({ children }: PropsWithChildren) {
       config={{
         domain: appDomain,
         siweUri: `${appUrl}`,
-        rpcUrl: baseSepoliaRpcUrl,
+        rpcUrl: baseMainnetRpcUrl,
         relay: "https://relay.farcaster.xyz",
       }}
     >

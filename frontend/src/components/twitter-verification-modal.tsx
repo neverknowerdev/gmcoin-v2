@@ -92,7 +92,7 @@ export function TwitterVerificationModal({
       if (hash) {
         setTxHash(hash);
         console.log("📝 Transaction hash:", hash);
-        console.log("🔗 View on BaseScan:", `https://sepolia.basescan.org/tx/${hash}`);
+        console.log("🔗 View on BaseScan:", `https://basescan.org/tx/${hash}`);
       }
       // Don't call onSuccess immediately - wait for confirmation
     } catch (err) {
@@ -146,7 +146,7 @@ export function TwitterVerificationModal({
               <p className="font-semibold">✅ Transaction submitted!</p>
               <p className="text-xs mt-1 break-all">Hash: {txHash}</p>
               <a
-                href={`https://sepolia.basescan.org/tx/${txHash}`}
+                href={`https://basescan.org/tx/${txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs underline mt-1 block"

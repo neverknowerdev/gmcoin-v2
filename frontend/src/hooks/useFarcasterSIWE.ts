@@ -54,7 +54,7 @@ export function useFarcasterSIWE() {
           
           if (hash) {
             console.log("📝 Transaction hash:", hash);
-            console.log("🔗 View on BaseScan:", `https://sepolia.basescan.org/tx/${hash}`);
+            console.log("🔗 View on BaseScan:", `https://basescan.org/tx/${hash}`);
           }
         } catch (error) {
           console.error("❌ Farcaster SIWE verification failed:", error);

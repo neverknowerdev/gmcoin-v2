@@ -4,9 +4,9 @@ import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, 
 import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
 import { useCallback, useEffect } from "react";
-import { baseSepolia, base } from "wagmi/chains";
+import { base } from "wagmi/chains";
+import { chain as appChain } from "@/config/chains";
 
-const BASE_SEPOLIA_CHAIN_ID = baseSepolia.id; // 84532
 const BASE_MAINNET_CHAIN_ID = base.id; // 8453
 
 /**
@@ -15,13 +15,8 @@ const BASE_MAINNET_CHAIN_ID = base.id; // 8453
 function getChainNameForCanister(chainId: number): string {
   if (chainId === BASE_MAINNET_CHAIN_ID) {
     return "Base Mainnet";
-  } else if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    // For Base Sepolia, we still use "Base Mainnet" as the chain name
-    // since the canister is configured for Base Mainnet
-    // If you have separate canister config for testnet, adjust this
-    return "Base Mainnet";
   }
-  throw new Error(`Unsupported chain ID: ${chainId}`);
+  throw new Error(`Unsupported chain ID: ${chainId}. Only Base Mainnet (${BASE_MAINNET_CHAIN_ID}) is supported.`);
 }
 
 export function useAccountManager() {
@@ -71,8 +66,8 @@ export function useAccountManager() {
 
   // Validate chain before transactions
   const validateChain = useCallback(() => {
-    if (chainId !== BASE_SEPOLIA_CHAIN_ID) {
-      const errorMsg = `Wrong network! Please switch to Base Sepolia (Chain ID: ${BASE_SEPOLIA_CHAIN_ID}). Current chain: ${chainId}`;
+    if (chainId !== BASE_MAINNET_CHAIN_ID) {
+      const errorMsg = `Wrong network! Please switch to Base Mainnet (Chain ID: ${BASE_MAINNET_CHAIN_ID}). Current chain: ${chainId}`;
       console.error("❌", errorMsg);
       throw new Error(errorMsg);
     }
@@ -87,7 +82,7 @@ export function useAccountManager() {
       // Validate chain before transaction
       validateChain();
 
-      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_SEPOLIA_CHAIN_ID);
+      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
 
       return writeContract({
@@ -95,7 +90,7 @@ export function useAccountManager() {
         abi: ACCOUNT_MANAGER_ABI,
         functionName: "requestTwitterVerificationByAuthCode",
         args: [authCode, BigInt(twitterID), tweetID],
-        chainId: BASE_SEPOLIA_CHAIN_ID, // Explicitly set chain ID
+        chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
       });
     },
     [address, writeContract, validateChain, chainId]
@@ -110,7 +105,7 @@ export function useAccountManager() {
       // Validate chain before transaction
       validateChain();
 
-      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_SEPOLIA_CHAIN_ID);
+      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
 
       return writeContract({
@@ -118,7 +113,7 @@ export function useAccountManager() {
         abi: ACCOUNT_MANAGER_ABI,
         functionName: "requestFarcasterVerification",
         args: [BigInt(farcasterFid), address],
-        chainId: BASE_SEPOLIA_CHAIN_ID, // Explicitly set chain ID
+        chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
       });
     },
     [address, writeContract, validateChain, chainId]
@@ -134,7 +129,7 @@ export function useAccountManager() {
     hash,
     transactionHash: hash,
     chainId,
-    isCorrectChain: chainId === BASE_SEPOLIA_CHAIN_ID,
+    isCorrectChain: chainId === BASE_MAINNET_CHAIN_ID,
   };
 }
 
