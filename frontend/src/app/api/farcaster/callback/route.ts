@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import {
   FARCASTER_PROFILE_COOKIE,
   FARCASTER_STATE_COOKIE,
-  deserializeFarcasterProfile,
+  serializeFarcasterProfile,
 } from "@/lib/server/farcaster-oauth";
 import type { FarcasterProfile } from "@/types/social";
 
@@ -161,14 +161,19 @@ export async function GET(request: NextRequest) {
     },
   });
 
+  // Set cookies
+  const cookieOptions = {
+    httpOnly: true as const,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+  };
+
   clearStateCookies(response);
   response.cookies.set({
     name: FARCASTER_PROFILE_COOKIE,
-    value: JSON.stringify(profile),
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    value: serializeFarcasterProfile(profile),
+    ...cookieOptions,
     maxAge: 60 * 60 * 24 * 30,
   });
 

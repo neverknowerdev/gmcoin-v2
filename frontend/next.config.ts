@@ -31,6 +31,50 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "pbs.twimg.com",
+      },
+      {
+        protocol: "https",
+        hostname: "warpcast.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.warpcast.com",
+      },
+      {
+        protocol: "https",
+        hostname: "ipfs.io",
+      },
+      {
+        protocol: "https",
+        hostname: "gateway.ipfs.io",
+      },
+      {
+        protocol: "https",
+        hostname: "*.ipfs.io",
+      },
+      {
+        protocol: "https",
+        hostname: "neynar.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.neynar.com",
+      },
+      {
+        protocol: "https",
+        hostname: "imagedelivery.net",
+      },
+      {
+        protocol: "https",
+        hostname: "*.imagedelivery.net",
+      },
+    ],
+  },
   async headers() {
     return [
       {

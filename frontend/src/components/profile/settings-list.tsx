@@ -84,14 +84,16 @@ export function SettingsList({
       
       <div className="space-y-2">
         {settings.map((setting) => (
-          <button
+          <div
             key={setting.id}
             onClick={() => {
-              if (setting.onClick) {
+              if (setting.onClick && !setting.hasToggle) {
                 setting.onClick();
               }
             }}
-            className="w-full flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm border border-gray-100 hover:bg-gray-50 transition"
+            className={`w-full flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm border border-gray-100 transition ${
+              !setting.hasToggle ? "hover:bg-gray-50 cursor-pointer" : ""
+            }`}
           >
             <div className="flex items-center gap-3">
               <setting.icon className="h-5 w-5 text-black bg-gray-200 rounded-xl p-1" />
@@ -121,7 +123,7 @@ export function SettingsList({
             ) : (
               <ChevronRight className="h-5 w-5 text-gray-400" />
             )}
-          </button>
+          </div>
         ))}
       </div>
     </div>

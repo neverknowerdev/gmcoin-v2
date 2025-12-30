@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMiniKit, useOpenUrl } from "@coinbase/onchainkit/minikit";
-import { useSignIn, useProfile } from "@farcaster/auth-kit";
+import { useSignIn } from "@farcaster/auth-kit";
 import { SocialActivity } from "@/components/stats/social-activity";
 import { StreakCardNew } from "@/components/home/streak-card-new";
 import { EngagementImpact } from "@/components/stats/engagement-impact";
 import { AccountConnections } from "@/components/home/account-connections";
 import { InviteFriendsCard } from "@/components/home/invite-friends-card";
 import { LeaderboardCard } from "@/components/home/leaderboard-card";
-import type { XProfile } from "@/types/social";
+import type { XProfile, FarcasterProfile } from "@/types/social";
 import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { useUserRank, useUserStreak } from "@/hooks/useUserStats";
 import { useUserTransactions } from "@/hooks/useTransactions";
@@ -19,14 +19,7 @@ export default function SocialPage() {
   const { context } = useMiniKit();
   const openUrl = useOpenUrl();
   const [xConnection, setXConnection] = useState<XProfile | null>(null);
-
-  // Farcaster SIWE hooks
-  const { isConnected: isFarcasterConnectedFromHook } = useSignIn({});
-
-  const { profile: farcasterProfile } = useProfile();
-
-  const isFarcasterConnected =
-    isFarcasterConnectedFromHook && Boolean(farcasterProfile);
+  const [farcasterConnection, setFarcasterConnection] = useState<FarcasterProfile | null>(null);
 
   const isMiniApp = useMemo(() => Boolean(context), [context]);
   
@@ -69,7 +62,7 @@ export default function SocialPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const refresh = async () => {
+    const refreshX = async () => {
       try {
         const response = await fetch("/api/x/status", { cache: "no-store" });
         if (!response.ok) return;
@@ -82,34 +75,74 @@ export default function SocialPage() {
         console.error("Unable to load X auth status", error);
       }
     };
-    void refresh();
+    const refreshFarcaster = async () => {
+      try {
+        const response = await fetch("/api/farcaster/status", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          connected: boolean;
+          profile?: FarcasterProfile;
+        };
+        setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
+      } catch (error) {
+        console.error("Unable to load Farcaster auth status", error);
+      }
+    };
+    void refreshX();
+    void refreshFarcaster();
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const currentUrl = new URL(window.location.href);
-    const param = currentUrl.searchParams.get("xAuth");
-    if (!param) return;
-    currentUrl.searchParams.delete("xAuth");
-    window.history.replaceState(
-      {},
-      "",
-      `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
-    );
-    const refresh = async () => {
-      try {
-        const response = await fetch("/api/x/status", { cache: "no-store" });
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          connected: boolean;
-          profile?: XProfile;
-        };
-        setXConnection(payload.connected ? payload.profile ?? null : null);
-      } catch (error) {
-        console.error("Unable to load X auth status", error);
-      }
-    };
-    void refresh();
+    const xAuthParam = currentUrl.searchParams.get("xAuth");
+    const fcAuthParam = currentUrl.searchParams.get("fcAuth");
+    
+    if (xAuthParam) {
+      currentUrl.searchParams.delete("xAuth");
+      window.history.replaceState(
+        {},
+        "",
+        `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
+      );
+      const refresh = async () => {
+        try {
+          const response = await fetch("/api/x/status", { cache: "no-store" });
+          if (!response.ok) return;
+          const payload = (await response.json()) as {
+            connected: boolean;
+            profile?: XProfile;
+          };
+          setXConnection(payload.connected ? payload.profile ?? null : null);
+        } catch (error) {
+          console.error("Unable to load X auth status", error);
+        }
+      };
+      void refresh();
+    }
+    
+    if (fcAuthParam) {
+      currentUrl.searchParams.delete("fcAuth");
+      window.history.replaceState(
+        {},
+        "",
+        `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
+      );
+      const refresh = async () => {
+        try {
+          const response = await fetch("/api/farcaster/status", { cache: "no-store" });
+          if (!response.ok) return;
+          const payload = (await response.json()) as {
+            connected: boolean;
+            profile?: FarcasterProfile;
+          };
+          setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
+        } catch (error) {
+          console.error("Unable to load Farcaster auth status", error);
+        }
+      };
+      void refresh();
+    }
   }, []);
 
   const handleConnectX = useCallback(() => {
@@ -125,18 +158,85 @@ export default function SocialPage() {
     }
   }, [isMiniApp, openUrl]);
 
-  const handleConnectFarcaster = useCallback(() => {
-    const targetPath = "/api/farcaster/connect";
-    if (isMiniApp) {
-      if (typeof window !== "undefined") {
-        void openUrl(`${window.location.origin}${targetPath}`);
+  // Farcaster AuthKit sign-in
+  const {
+    connect: farcasterConnect,
+    signIn: farcasterSignIn,
+    signOut: farcasterSignOut,
+    isConnected: isFarcasterAuthConnected,
+  } = useSignIn({
+    onSuccess: async ({ fid, username, displayName, pfpUrl }) => {
+      // Store profile in cookie after successful sign-in
+      try {
+        const response = await fetch("/api/farcaster/store", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fid,
+            username,
+            displayName,
+            pfpUrl,
+          }),
+        });
+
+        if (response.ok) {
+          // Refresh Farcaster connection status
+          const statusResponse = await fetch("/api/farcaster/status", { cache: "no-store" });
+          if (statusResponse.ok) {
+            const payload = (await statusResponse.json()) as {
+              connected: boolean;
+              profile?: FarcasterProfile;
+            };
+            setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to store Farcaster profile:", error);
       }
-      return;
+    },
+  });
+
+  const handleConnectFarcaster = useCallback(() => {
+    try {
+      // Connect first, then sign in
+      farcasterConnect();
+      // Sign in after a short delay to allow connection to establish
+      setTimeout(() => {
+        farcasterSignIn();
+      }, 200);
+    } catch (error) {
+      console.error("Error connecting to Farcaster:", error);
     }
-    if (typeof window !== "undefined") {
-      window.open(targetPath, "_blank", "noopener,noreferrer");
+  }, [farcasterConnect, farcasterSignIn]);
+
+  const handleDisconnectFarcaster = useCallback(async () => {
+    try {
+      // Sign out from AuthKit first
+      farcasterSignOut();
+      
+      // Then remove from cookie
+      const response = await fetch("/api/farcaster/disconnect", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to disconnect");
+      }
+      console.log("✅ Farcaster account disconnected successfully");
+      // Clear local state immediately
+      setFarcasterConnection(null);
+      // Refresh to ensure state is synced
+      const statusResponse = await fetch("/api/farcaster/status", { cache: "no-store" });
+      if (statusResponse.ok) {
+        const payload = (await statusResponse.json()) as {
+          connected: boolean;
+          profile?: FarcasterProfile;
+        };
+        setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
+      }
+    } catch (error) {
+      console.error("❌ Unable to disconnect Farcaster account", error);
     }
-  }, [isMiniApp, openUrl]);
+  }, [farcasterSignOut]);
 
   return (
     <div className="min-h-screen bg-white pb-32">
@@ -151,9 +251,10 @@ export default function SocialPage() {
 
       <AccountConnections
         xConnection={xConnection}
-        isFarcasterConnected={isFarcasterConnected}
+        farcasterConnection={farcasterConnection}
         onConnectX={handleConnectX}
         onConnectFarcaster={handleConnectFarcaster}
+        onDisconnectFarcaster={handleDisconnectFarcaster}
       />
 
       <InviteFriendsCard onInvite={() => console.log("Invite clicked")} />

@@ -18,9 +18,17 @@ export function Providers({ children }: PropsWithChildren) {
   const rpcApiKey = baseSepoliaRpcUrl.split('/').pop() || "";
   const apiKey = process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY ?? rpcApiKey;
 
+  // Get domain for AuthKit
+  const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 
+    (typeof window !== "undefined" ? window.location.hostname : "localhost");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+    (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+
   return (
     <AuthKitProvider
       config={{
+        domain: appDomain,
+        siweUri: `${appUrl}/api/farcaster/callback`,
         rpcUrl: baseSepoliaRpcUrl,
       }}
     >

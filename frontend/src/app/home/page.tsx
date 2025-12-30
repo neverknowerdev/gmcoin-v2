@@ -8,7 +8,7 @@ import {
   useAuthenticate,
   useOpenUrl,
 } from "@coinbase/onchainkit/minikit";
-import { useSignIn, useProfile } from "@farcaster/auth-kit";
+import { useSignIn } from "@farcaster/auth-kit";
 import { BalanceSection } from "@/components/home/balance-section";
 import { StreakCardNew } from "@/components/home/streak-card-new";
 import { AccountConnections } from "@/components/home/account-connections";
@@ -20,7 +20,7 @@ import { TwitterVerificationModal } from "@/components/twitter-verification-moda
 import { VerificationStatus } from "@/components/verification-status";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
 import { DynamicConnectButton } from "@dynamic-labs/sdk-react-core";
-import type { XProfile } from "@/types/social";
+import type { XProfile, FarcasterProfile } from "@/types/social";
 import { useUserBalance } from "@/hooks/useBalance";
 import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { useCurrentEpoch } from "@/hooks/useEpochs";
@@ -38,16 +38,8 @@ export default function HomePage() {
   const { address, isConnected } = useWalletConnection();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [xConnection, setXConnection] = useState<XProfile | null>(null);
+  const [farcasterConnection, setFarcasterConnection] = useState<FarcasterProfile | null>(null);
   const [showTwitterVerification, setShowTwitterVerification] = useState(false);
-  
-  // Farcaster SIWE hooks
-  const {
-    isConnected: isFarcasterConnectedFromHook,
-  } = useSignIn({});
-  
-  const { profile: farcasterProfile } = useProfile();
-  
-  const isFarcasterConnected = isFarcasterConnectedFromHook && Boolean(farcasterProfile);
 
   // Fetch real data
   const { data: balanceData } = useUserBalance();
@@ -101,8 +93,22 @@ export default function HomePage() {
       return context?.user?.displayName ?? context?.user?.username ?? "Friend";
     }
 
+    // Prioritize X username when X account is connected
+    if (xConnection?.username) {
+      return xConnection.username;
+    }
+
+    // Then prioritize Farcaster username when Farcaster account is connected
+    if (farcasterConnection?.username) {
+      return farcasterConnection.username;
+    }
+
     if (xConnection?.name) {
       return xConnection.name;
+    }
+
+    if (farcasterConnection?.displayName) {
+      return farcasterConnection.displayName;
     }
 
     if (isConnected && address) {
@@ -117,6 +123,9 @@ export default function HomePage() {
     isConnected,
     isMiniApp,
     xConnection?.name,
+    xConnection?.username,
+    farcasterConnection?.username,
+    farcasterConnection?.displayName,
   ]);
 
   const custodyAddress = useMemo(
@@ -191,24 +200,48 @@ export default function HomePage() {
     }
   }, []);
 
+  const refreshFarcasterConnection = useCallback(async () => {
+    try {
+      const response = await fetch("/api/farcaster/status", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as {
+        connected: boolean;
+        profile?: FarcasterProfile;
+      };
+      setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
+    } catch (error) {
+      console.error("Unable to load Farcaster auth status", error);
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     void refreshXConnection();
-  }, [refreshXConnection]);
+    void refreshFarcasterConnection();
+  }, [refreshXConnection, refreshFarcasterConnection]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const currentUrl = new URL(window.location.href);
-    const param = currentUrl.searchParams.get("xAuth");
-    if (!param) return;
-    currentUrl.searchParams.delete("xAuth");
-    window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
-    void refreshXConnection();
-    // Show verification modal if X is connected and wallet is connected
-    if (param === "connected" && isConnected && address) {
-      setShowTwitterVerification(true);
+    const xAuthParam = currentUrl.searchParams.get("xAuth");
+    const fcAuthParam = currentUrl.searchParams.get("fcAuth");
+    
+    if (xAuthParam) {
+      currentUrl.searchParams.delete("xAuth");
+      window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+      void refreshXConnection();
+      // Show verification modal if X is connected and wallet is connected
+      if (xAuthParam === "connected" && isConnected && address) {
+        setShowTwitterVerification(true);
+      }
     }
-  }, [refreshXConnection, isConnected, address]);
+    
+    if (fcAuthParam) {
+      currentUrl.searchParams.delete("fcAuth");
+      window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+      void refreshFarcasterConnection();
+    }
+  }, [refreshXConnection, refreshFarcasterConnection, isConnected, address]);
 
   const handleConnectX = useCallback(() => {
     const targetPath = "/api/x/connect";
@@ -240,18 +273,72 @@ export default function HomePage() {
     }
   }, [refreshXConnection]);
 
-  const handleConnectFarcaster = useCallback(() => {
-    const targetPath = "/api/farcaster/connect";
-    if (isMiniApp) {
-      if (typeof window !== "undefined") {
-        void openUrl(`${window.location.origin}${targetPath}`);
+  // Farcaster AuthKit sign-in
+  const {
+    connect: farcasterConnect,
+    signIn: farcasterSignIn,
+    signOut: farcasterSignOut,
+    isConnected: isFarcasterAuthConnected,
+  } = useSignIn({
+    onSuccess: async ({ fid, username, displayName, pfpUrl }) => {
+      // Store profile in cookie after successful sign-in
+      try {
+        const response = await fetch("/api/farcaster/store", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fid,
+            username,
+            displayName,
+            pfpUrl,
+          }),
+        });
+
+        if (response.ok) {
+          // Refresh Farcaster connection status
+          await refreshFarcasterConnection();
+        }
+      } catch (error) {
+        console.error("Failed to store Farcaster profile:", error);
       }
-      return;
+    },
+  });
+
+  const handleConnectFarcaster = useCallback(() => {
+    try {
+      // Connect first, then sign in
+      farcasterConnect();
+      // Sign in after a short delay to allow connection to establish
+      setTimeout(() => {
+        farcasterSignIn();
+      }, 200);
+    } catch (error) {
+      console.error("Error connecting to Farcaster:", error);
     }
-    if (typeof window !== "undefined") {
-      window.open(targetPath, "_blank", "noopener,noreferrer");
+  }, [farcasterConnect, farcasterSignIn]);
+
+  const handleDisconnectFarcaster = useCallback(async () => {
+    try {
+      // Sign out from AuthKit first
+      farcasterSignOut();
+      
+      // Then remove from cookie
+      const response = await fetch("/api/farcaster/disconnect", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to disconnect");
+      }
+      console.log("✅ Farcaster account disconnected successfully");
+      // Clear local state immediately
+      setFarcasterConnection(null);
+    } catch (error) {
+      console.error("❌ Unable to disconnect Farcaster account", error);
+    } finally {
+      // Refresh to ensure state is synced
+      await refreshFarcasterConnection();
     }
-  }, [isMiniApp, openUrl]);
+  }, [farcasterSignOut, refreshFarcasterConnection]);
 
   if (!isMiniApp && !isConnected) {
     return (
@@ -314,9 +401,11 @@ export default function HomePage() {
         
         <AccountConnections
           xConnection={xConnection}
-          isFarcasterConnected={isFarcasterConnected}
+          farcasterConnection={farcasterConnection}
           onConnectX={handleConnectX}
+          onDisconnectX={handleDisconnectX}
           onConnectFarcaster={handleConnectFarcaster}
+          onDisconnectFarcaster={handleDisconnectFarcaster}
         />
         
         <LeaderboardCard

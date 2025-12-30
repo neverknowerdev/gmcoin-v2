@@ -1,21 +1,25 @@
 "use client";
 
 import Image from "next/image";
-import type { XProfile } from "@/types/social";
+import type { XProfile, FarcasterProfile } from "@/types/social";
 import { CoinbaseVerificationButton } from "@/components/coinbase-verification-button";
 
 interface AccountConnectionsProps {
   xConnection: XProfile | null;
-  isFarcasterConnected: boolean;
+  farcasterConnection: FarcasterProfile | null;
   onConnectX: () => void;
+  onDisconnectX?: () => void;
   onConnectFarcaster: () => void;
+  onDisconnectFarcaster?: () => void;
 }
 
 export function AccountConnections({
   xConnection,
-  isFarcasterConnected,
+  farcasterConnection,
   onConnectX,
+  onDisconnectX,
   onConnectFarcaster,
+  onDisconnectFarcaster,
 }: AccountConnectionsProps) {
   return (
     <div className="mx-4 mb-4 space-y-3">
@@ -35,9 +39,13 @@ export function AccountConnections({
           <p className="text-xs text-gray-500">Link your X account</p>
         </div>
         {xConnection ? (
-          <div className="flex-shrink-0 rounded-full bg-[#84D65B] px-4 py-2">
+          <button
+            onClick={onDisconnectX}
+            className="flex-shrink-0 rounded-full bg-[#84D65B] px-4 py-2 hover:bg-[#6fb84a] transition"
+            title="Click to disconnect"
+          >
             <span className="text-sm font-medium text-black">✓ Connected</span>
-          </div>
+          </button>
         ) : (
           <button
             onClick={onConnectX}
@@ -73,13 +81,17 @@ export function AccountConnections({
           />
         </div>
         <div className="flex-1">
-          <h3 className="text-base font-semibold text-black">Connect Forecaster</h3>
-          <p className="text-xs text-gray-500">Link your Forecaster account</p>
+          <h3 className="text-base font-semibold text-black">Connect Farcaster</h3>
+          <p className="text-xs text-gray-500">Link your Farcaster account</p>
         </div>
-        {isFarcasterConnected ? (
-          <div className="flex-shrink-0 rounded-full bg-[#84D65B] px-4 py-2">
+        {farcasterConnection ? (
+          <button
+            onClick={onDisconnectFarcaster}
+            className="flex-shrink-0 rounded-full bg-[#84D65B] px-4 py-2 hover:bg-[#6fb84a] transition"
+            title="Click to disconnect"
+          >
             <span className="text-sm font-medium text-black">✓ Connected</span>
-          </div>
+          </button>
         ) : (
           <button
             onClick={onConnectFarcaster}
