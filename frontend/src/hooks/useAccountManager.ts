@@ -3,10 +3,26 @@
 import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from "wagmi";
 import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
-import { useCallback } from "react";
-import { baseSepolia } from "wagmi/chains";
+import { useCallback, useEffect } from "react";
+import { baseSepolia, base } from "wagmi/chains";
 
 const BASE_SEPOLIA_CHAIN_ID = baseSepolia.id; // 84532
+const BASE_MAINNET_CHAIN_ID = base.id; // 8453
+
+/**
+ * Get chain name for canister based on chain ID
+ */
+function getChainNameForCanister(chainId: number): string {
+  if (chainId === BASE_MAINNET_CHAIN_ID) {
+    return "Base Mainnet";
+  } else if (chainId === BASE_SEPOLIA_CHAIN_ID) {
+    // For Base Sepolia, we still use "Base Mainnet" as the chain name
+    // since the canister is configured for Base Mainnet
+    // If you have separate canister config for testnet, adjust this
+    return "Base Mainnet";
+  }
+  throw new Error(`Unsupported chain ID: ${chainId}`);
+}
 
 export function useAccountManager() {
   const { address } = useWalletConnection();
@@ -15,6 +31,43 @@ export function useAccountManager() {
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
+
+  // Call canister after transaction is confirmed
+  useEffect(() => {
+    if (isConfirmed && hash && chainId) {
+      const triggerCanisterEvent = async () => {
+        try {
+          const chainName = getChainNameForCanister(chainId);
+          console.log(`🔄 Triggering canister event processing for chain: ${chainName}, tx: ${hash}`);
+          
+          const response = await fetch("/api/canister/handle-event", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              chain: chainName,
+              transactionId: hash,
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            console.error("❌ Failed to trigger canister event:", error);
+            return;
+          }
+
+          const result = await response.json();
+          console.log("✅ Canister event triggered successfully:", result);
+        } catch (error) {
+          console.error("❌ Error triggering canister event:", error);
+          // Don't throw - this is a background operation
+        }
+      };
+
+      triggerCanisterEvent();
+    }
+  }, [isConfirmed, hash, chainId]);
 
   // Validate chain before transactions
   const validateChain = useCallback(() => {
@@ -97,7 +150,7 @@ export function useVerificationEvents(
       logs.forEach((log) => {
         const { twitterID, wallet, isSuccess, errorMsg } = log.args;
         if (onTwitterVerified && twitterID && wallet) {
-          onTwitterVerified(twitterID.toString(), wallet, isSuccess, errorMsg || "");
+          onTwitterVerified(twitterID.toString(), wallet, isSuccess ?? false, errorMsg || "");
         }
       });
     },
@@ -111,7 +164,7 @@ export function useVerificationEvents(
       logs.forEach((log) => {
         const { farcasterFid, wallet, isSuccess, errorMsg } = log.args;
         if (onFarcasterVerified && farcasterFid && wallet) {
-          onFarcasterVerified(farcasterFid.toString(), wallet, isSuccess, errorMsg || "");
+          onFarcasterVerified(farcasterFid.toString(), wallet, isSuccess ?? false, errorMsg || "");
         }
       });
     },
