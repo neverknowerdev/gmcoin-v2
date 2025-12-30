@@ -6,7 +6,6 @@ import {
   useMiniKit,
   useOpenUrl,
 } from "@coinbase/onchainkit/minikit";
-import { useSignIn } from "@farcaster/auth-kit";
 import { ProfileInfo } from "@/components/profile/profile-info";
 import { ProfileStats } from "@/components/profile/profile-stats";
 import { AccountConnections } from "@/components/home/account-connections";
@@ -175,71 +174,13 @@ export default function ProfilePage() {
     }
   }, [isMiniApp, openUrl]);
 
-  // Farcaster AuthKit sign-in
-  const {
-    connect: farcasterConnect,
-    signIn: farcasterSignIn,
-    signOut: farcasterSignOut,
-    isConnected: isFarcasterConnected,
-    url: farcasterUrl,
-  } = useSignIn({
-    onSuccess: async ({ fid, username, displayName, pfpUrl }) => {
-      // Store profile in cookie after successful sign-in
-      try {
-        const response = await fetch("/api/farcaster/store", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fid,
-            username,
-            displayName,
-            pfpUrl,
-          }),
-        });
-
-        if (response.ok) {
-          // Refresh Farcaster connection status
-          const statusResponse = await fetch("/api/farcaster/status", { cache: "no-store" });
-          if (statusResponse.ok) {
-            const payload = (await statusResponse.json()) as {
-              connected: boolean;
-              profile?: FarcasterProfile;
-            };
-            setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to store Farcaster profile:", error);
-      }
-    },
-  });
-
-  const handleConnectFarcaster = useCallback(() => {
-    try {
-      // Connect first, then sign in
-      farcasterConnect();
-      // Sign in after a short delay to allow connection to establish
-      setTimeout(() => {
-        farcasterSignIn();
-      }, 200);
-    } catch (error) {
-      console.error("Error connecting to Farcaster:", error);
-    }
-  }, [farcasterConnect, farcasterSignIn]);
-
   const handleDisconnectFarcaster = useCallback(async () => {
     try {
-      // Sign out from AuthKit first
-      farcasterSignOut();
-      
-      // Then remove from cookie
+      // Remove from cookie
       const response = await fetch("/api/farcaster/disconnect", { method: "POST" });
       if (!response.ok) {
         throw new Error("Failed to disconnect");
       }
-      console.log("✅ Farcaster account disconnected successfully");
       // Clear local state immediately
       setFarcasterConnection(null);
       // Refresh to ensure state is synced
@@ -252,9 +193,9 @@ export default function ProfilePage() {
         setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
       }
     } catch (error) {
-      console.error("❌ Unable to disconnect Farcaster account", error);
+      console.error("Unable to disconnect Farcaster account", error);
     }
-  }, [farcasterSignOut]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-white pb-32">
@@ -281,7 +222,6 @@ export default function ProfilePage() {
           xConnection={xConnection}
           farcasterConnection={farcasterConnection}
           onConnectX={handleConnectX}
-          onConnectFarcaster={handleConnectFarcaster}
           onDisconnectFarcaster={handleDisconnectFarcaster}
         />
       </div>

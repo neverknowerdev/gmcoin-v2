@@ -28,8 +28,9 @@ export function Providers({ children }: PropsWithChildren) {
     <AuthKitProvider
       config={{
         domain: appDomain,
-        siweUri: `${appUrl}/api/farcaster/callback`,
+        siweUri: `${appUrl}`,
         rpcUrl: baseSepoliaRpcUrl,
+        relay: "https://relay.farcaster.xyz",
       }}
     >
       <OnchainKitProvider

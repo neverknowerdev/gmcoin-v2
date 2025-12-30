@@ -293,7 +293,7 @@ export default function HomePage() {
             username,
             displayName,
             pfpUrl,
-          }),
+          }), 
         });
 
         if (response.ok) {
@@ -342,28 +342,34 @@ export default function HomePage() {
 
   if (!isMiniApp && !isConnected) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-6 text-center">
-        <Image
-          src="/images/gmCup2.svg"
-          alt="GM mascot"
-          width={120}
-          height={120}
-          className="drop-shadow-2xl"
-          priority
-        />
-        <div className="space-y-2">
-          <p className="text-xl font-semibold text-white">
-            Connect your wallet to continue
-          </p>
-          <p className="text-sm text-white/70">
-            We need a connected wallet to personalize your GMcoin experience.
-          </p>
+      <div className="flex min-h-screen flex-col items-center justify-center px-4">
+        <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-sm">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <Image
+              src="/images/gmCup2.svg"
+              alt="GM mascot"
+              width={100}
+              height={100}
+              className="flex-shrink-0"
+              priority
+            />
+            <div className="space-y-2">
+              <p className="text-2xl font-bold text-black" style={{ fontFamily: "var(--font-anton), sans-serif" }}>
+                Connect your wallet
+              </p>
+              <p className="text-sm text-gray-600">
+                We need a connected wallet to personalize your GMcoin experience.
+              </p>
+            </div>
+            <div className="w-full pt-2">
+              <DynamicConnectButton
+                buttonClassName="w-full cursor-pointer rounded-full bg-[#84D65B] px-6 py-3 text-sm font-medium text-black hover:bg-[#6fb84a] transition shadow-sm"
+              >
+                Connect Wallet
+              </DynamicConnectButton>
+            </div>
+          </div>
         </div>
-        <DynamicConnectButton
-          buttonClassName="w-full max-w-xs cursor-pointer rounded-3xl border border-white/40 bg-white/10 px-6 py-3 text-sm font-semibold text-white shadow-lg backdrop-blur"
-        >
-          Connect Wallet
-        </DynamicConnectButton>
       </div>
     );
   }
@@ -404,7 +410,6 @@ export default function HomePage() {
           farcasterConnection={farcasterConnection}
           onConnectX={handleConnectX}
           onDisconnectX={handleDisconnectX}
-          onConnectFarcaster={handleConnectFarcaster}
           onDisconnectFarcaster={handleDisconnectFarcaster}
         />
         

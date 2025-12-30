@@ -1,7 +1,5 @@
-"use server";
-
 import { NextRequest, NextResponse } from "next/server";
-import { serializeFarcasterProfile } from "@/lib/server/farcaster-oauth";
+import { FARCASTER_PROFILE_COOKIE, serializeFarcasterProfile } from "@/lib/server/farcaster-oauth";
 import type { FarcasterProfile } from "@/types/social";
 
 export async function POST(request: NextRequest) {
@@ -9,7 +7,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { fid, username, displayName, pfpUrl } = body;
 
+    console.log("📥 Storing Farcaster profile:", { fid, username, displayName, pfpUrl });
+
     if (!fid || !username) {
+      console.error("❌ Missing required fields");
       return NextResponse.json(
         { error: "Missing required fields: fid and username are required" },
         { status: 400 }
@@ -23,6 +24,9 @@ export async function POST(request: NextRequest) {
       pfpUrl: pfpUrl || null,
     };
 
+    const serialized = serializeFarcasterProfile(profile);
+    console.log("✅ Serialized profile:", serialized.substring(0, 50) + "...");
+
     const cookieOptions = {
       httpOnly: true as const,
       secure: process.env.NODE_ENV === "production",
@@ -33,14 +37,15 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({ success: true, profile });
     response.cookies.set({
-      name: "fc_profile",
-      value: serializeFarcasterProfile(profile),
+      name: FARCASTER_PROFILE_COOKIE,
+      value: serialized,
       ...cookieOptions,
     });
 
+    console.log("✅ Cookie set:", FARCASTER_PROFILE_COOKIE);
     return response;
   } catch (error) {
-    console.error("Error storing Farcaster profile:", error);
+    console.error("❌ Error storing Farcaster profile:", error);
     return NextResponse.json(
       { error: "Failed to store Farcaster profile" },
       { status: 500 }
