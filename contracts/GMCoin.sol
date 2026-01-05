@@ -30,34 +30,30 @@ contract GMCoinImplementation is
         _disableInitializers();
     }
 
-    error OnlyGelatoDedicatedMsgSender();
+    error OnlyICPCanisterMsgSender();
 
     Timelock.Storage public timelockStorage;
 
     address public feeAddress;
     address public treasuryAddress;
-    address public relayServerAddress;
     uint256 public coinsMultiplicator;
-    uint256 public epochDays;
 
-    address public gelatoDedicatedMsgSender;
+    address public ICPCanisterMsgSender;
 
     function initialize(
         address _owner,
         address _feeAddress,
         address _treasuryAddress,
         uint256 _coinsMultiplicator,
-        uint256 _epochDays,
-        address _gelatoDedicatedMsgSender,
+        address _ICPCanisterMsgSender,
         uint256 _timeDelay
     ) public initializer {
         feeAddress = _feeAddress;
         treasuryAddress = _treasuryAddress;
 
         coinsMultiplicator = _coinsMultiplicator;
-        epochDays = _epochDays;
 
-        gelatoDedicatedMsgSender = _gelatoDedicatedMsgSender;
+        ICPCanisterMsgSender = _ICPCanisterMsgSender;
 
         __Ownable_init(_owner);
         __ERC20_init("GM Coin", "GM");
@@ -108,12 +104,12 @@ contract GMCoinImplementation is
         super._update(from, to, value);
     }
 
-    function mintFromGelatoW3F(
+    function mintForUsers(
         address[] memory to,
         uint256[] memory amounts
     ) public {
-        if (msg.sender != gelatoDedicatedMsgSender) {
-            revert OnlyGelatoDedicatedMsgSender();
+        if (msg.sender != ICPCanisterMsgSender) {
+            revert OnlyICPCanisterMsgSender();
         }
 
         for (uint256 i = 0; i < to.length; i++) {
