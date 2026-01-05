@@ -438,13 +438,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function _linkWalletToUser(uint256 userId, address newWallet) internal {
         if (userWallets.userIdByWallet(newWallet) != 0) {
-            _mergeUsers(
-                userWallets.userIdByWallet(_msgSender()),
-                userWallets.userIdByWallet(newWallet),
-                true,
-                true
-            );
-            return;
+            revert WalletAlreadyLinked();
         }
 
         userWallets.addWallet(
