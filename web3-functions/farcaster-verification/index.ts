@@ -7,13 +7,9 @@ import { Contract, Interface } from "ethers";
 import ky from "ky";
 
 const VerifierContractABI = [
-  "function verifyFarcaster(uint256 farcasterFid, address wallet) external",
+  "function createOrLinkUser(address wallet, uint256 twitterId, uint256 farcasterFid) public returns (uint256)",
   "function farcasterVerificationError(uint256 farcasterFid, address wallet, string calldata errorMsg) external",
-  "function getWalletByUserID(string calldata username) public returns (address)",
-  "function verifyTwitter(string calldata userID, address wallet) public",
-  "function getUnifiedUserIDByWallet(address wallet) public view returns (uint256)",
   "event VerifyFarcasterRequested(uint256 indexed farcasterFid, address indexed wallet)",
-  "function linkFarcasterWalletToUnifiedUser(uint256 userId, address wallet) public"
 ];
 
 Web3Function.onRun(async (context: Web3FunctionEventContext): Promise<Web3FunctionResult> => {
@@ -50,7 +46,7 @@ Web3Function.onRun(async (context: Web3FunctionEventContext): Promise<Web3Functi
       };
     }
 
-    const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY;
+    const NEYNAR_API_KEY = await context.secrets.get("NEYNAR_API_KEY");
     if (!NEYNAR_API_KEY) {
       throw new Error("NEYNAR_API_KEY is not set");
     }
@@ -59,8 +55,18 @@ Web3Function.onRun(async (context: Web3FunctionEventContext): Promise<Web3Functi
 
     console.log(`🔍 Verifying FID ${farcasterFid} for wallet ${wallet}`);
 
+    // Get configurable API URLs (for testing with mocks)
+    const farcasterPrimaryAddressUrl = await context.secrets.get("FARCASTER_PRIMARY_ADDRESS_URL") || "https://api.farcaster.xyz/fc/primary-address";
+    const farcasterAccountVerificationsUrl = await context.secrets.get("FARCASTER_ACCOUNT_VERIFICATIONS_URL") || "https://api.farcaster.xyz/fc/account-verifications";
+    const neynarUserBulkUrl = await context.secrets.get("NEYNAR_USER_BULK_URL") || "https://api.neynar.com/v2/farcaster/user/bulk";
+
     // Step 1: Fetch primary wallet for this FID (convert uint256 to string for API)
-    const primaryWallet = await fetchPrimaryWalletForFid(farcasterFid.toString(), NEYNAR_API_KEY);
+    const primaryWallet = await fetchPrimaryWalletForFid(
+      farcasterFid.toString(),
+      NEYNAR_API_KEY,
+      farcasterPrimaryAddressUrl,
+      neynarUserBulkUrl
+    );
 
     if (!primaryWallet) {
       console.log(`❌ No primary wallet found for FID ${farcasterFid}`);
@@ -74,14 +80,19 @@ Web3Function.onRun(async (context: Web3FunctionEventContext): Promise<Web3Functi
     }
 
     // Step 3: Check if Farcaster user has Twitter username linked
-    const twitterID = await fetchTwitterUserIDFromFarcaster(farcasterFid.toString());
+    const twitterID = await fetchTwitterUserIDFromFarcaster(
+      farcasterFid.toString(),
+      farcasterAccountVerificationsUrl
+    );
 
     let callData: any[] = [];
+    // Convert twitterID to BigInt (0 if empty string)
+    const twitterIdBigInt = twitterID && twitterID !== "" ? BigInt(twitterID) : BigInt(0);
     callData.push({
       to: userArgs.verifierContractAddress as string,
-      data: iface.encodeFunctionData("createOrLinkUnifiedUser", [
+      data: iface.encodeFunctionData("createOrLinkUser", [
         primaryWallet,
-        twitterID,
+        twitterIdBigInt,
         farcasterFid
       ])
     });
@@ -109,13 +120,18 @@ Web3Function.onRun(async (context: Web3FunctionEventContext): Promise<Web3Functi
   }
 });
 
-async function fetchPrimaryWalletForFid(fid: string, neynarApiKey: string): Promise<string | null> {
+async function fetchPrimaryWalletForFid(
+  fid: string,
+  neynarApiKey: string,
+  farcasterPrimaryAddressUrl: string = "https://api.farcaster.xyz/fc/primary-address",
+  neynarUserBulkUrl: string = "https://api.neynar.com/v2/farcaster/user/bulk"
+): Promise<string | null> {
   let primaryAddress: string | null = null;
   try {
     console.log(`🔍 Fetching primary wallet for FID ${fid}`);
 
     // 1) Warpcast: primary custody address for the FID
-    const response = await ky.get(`https://api.farcaster.xyz/fc/primary-address?fid=${fid}&protocol=ethereum`, {
+    const response = await ky.get(`${farcasterPrimaryAddressUrl}?fid=${fid}&protocol=ethereum`, {
       timeout: 3000
     });
 
@@ -135,7 +151,7 @@ async function fetchPrimaryWalletForFid(fid: string, neynarApiKey: string): Prom
 
   try {
     console.log(`🔄 Trying Neynar fallback for FID ${fid}`);
-    const response = await ky.get(`https://api.neynar.com/v2/farcaster/user/bulk?fids=${fid}&viewer_fid=1`, {
+    const response = await ky.get(`${neynarUserBulkUrl}?fids=${fid}&viewer_fid=1`, {
       timeout: 3000,
       headers: {
         'x-api-key': neynarApiKey
@@ -164,12 +180,15 @@ async function fetchPrimaryWalletForFid(fid: string, neynarApiKey: string): Prom
   return null;
 }
 
-async function fetchTwitterUserIDFromFarcaster(fid: string): Promise<string> {
+async function fetchTwitterUserIDFromFarcaster(
+  fid: string,
+  farcasterAccountVerificationsUrl: string = "https://api.farcaster.xyz/fc/account-verifications"
+): Promise<string> {
   try {
     console.log(`🔍 Fetching Twitter username for FID ${fid}`);
 
     // Use Warpcast account-verifications for Twitter handle discovery
-    const response = await ky.get(`https://api.farcaster.xyz/fc/account-verifications?fid=${fid}&platform=x`, {
+    const response = await ky.get(`${farcasterAccountVerificationsUrl}?fid=${fid}&platform=x`, {
       timeout: 3000
     });
 

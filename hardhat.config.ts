@@ -29,6 +29,16 @@ const config: HardhatUserConfig = {
       url: process.env.SEPOLIA_RPC_URL || "",
       accounts: process.env.SEPOLIA_PRIVATE_KEY ? [process.env.SEPOLIA_PRIVATE_KEY] : [],
     },
+    baseSepolia: {
+      url: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+      accounts: process.env.BASE_SEPOLIA_PRIVATE_KEY ? [process.env.BASE_SEPOLIA_PRIVATE_KEY] : [],
+      chainId: 84532,
+    },
+    monadTestnet: {
+      url: process.env.MONAD_TESTNET_RPC_URL || "https://testnet-rpc.monad.xyz",
+      accounts: process.env.MONAD_TESTNET_PRIVATE_KEY ? [process.env.MONAD_TESTNET_PRIVATE_KEY] : [],
+      chainId: 10143,
+    },
   },
   w3f: {
     rootDir: "./web3-functions",

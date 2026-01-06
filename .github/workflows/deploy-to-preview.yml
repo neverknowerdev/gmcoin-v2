@@ -1,0 +1,283 @@
+name: Deploy to Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+jobs:
+  deploy-vercel:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'yarn'
+        cache-dependency-path: yarn.lock
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Deploy smart contracts to Base Sepolia
+      id: deploy-contract
+      uses: ./.github/actions/deploy-contract
+      with:
+        branch_name: ${{ github.head_ref || github.ref_name }}
+        base_sepolia_rpc_url: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
+        deployer_private_key: ${{ secrets.BASE_SEPOLIA_PRIVATE_KEY }}
+        etherscan_api_key: ${{ secrets.ETHERSCAN_API_KEY }}
+        w3f_manager_address: ${{ secrets.W3F_MANAGER_ADDRESS }}
+        w3f_dedicated_msg_sender: ${{ secrets.W3F_DEDICATED_MSG_SENDER }}
+        force_deploy: ${{ github.event.action == 'opened' || github.event.action == 'reopened' }}
+
+    - name: Set contract addresses
+      run: |
+        echo "ACCOUNT_MANAGER_ADDRESS=${{ steps.deploy-contract.outputs.account_manager_address }}" >> $GITHUB_ENV
+        echo "MINTER_ADDRESS=${{ steps.deploy-contract.outputs.minter_address }}" >> $GITHUB_ENV
+        echo "GMCOIN_ADDRESS=${{ steps.deploy-contract.outputs.gmcoin_address }}" >> $GITHUB_ENV
+        echo "TREASURY_ADDRESS=${{ steps.deploy-contract.outputs.treasury_address }}" >> $GITHUB_ENV
+
+    - name: Install Vercel CLI
+      run: npm install --global vercel@latest
+
+    - name: Setup database and run migrations
+      id: setup-database
+      uses: ./.github/actions/setup-database
+      with:
+        branch_name: ${{ github.head_ref || github.ref_name }}
+        db_connection_string: ${{ secrets.DB_CONNECTION_STRING }}
+        force_deploy: ${{ github.event.action == 'opened' || github.event.action == 'reopened' }}
+
+    - name: Set database connection string
+      run: |
+        echo "NEW_DB_CONNECTION_STRING=${{ steps.setup-database.outputs.db_connection_string }}" >> $GITHUB_ENV
+
+    - name: Comment PR with deployment info
+      if: steps.deploy-contract.outputs.isDeployed == 'true' || steps.setup-database.outputs.isDeployed == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const contractDeployed = '${{ steps.deploy-contract.outputs.isDeployed }}' === 'true';
+          const dbDeployed = '${{ steps.setup-database.outputs.isDeployed }}' === 'true';
+          const accountManagerAddress = '${{ steps.deploy-contract.outputs.account_manager_address }}';
+          const minterAddress = '${{ steps.deploy-contract.outputs.minter_address }}';
+          const gmcoinAddress = '${{ steps.deploy-contract.outputs.gmcoin_address }}';
+          const treasuryAddress = '${{ steps.deploy-contract.outputs.treasury_address }}';
+          const dbName = '${{ steps.setup-database.outputs.db_name }}';
+          const prNumber = context.payload.pull_request.number;
+          
+          let deploymentSections = [];
+          
+          if (contractDeployed) {
+            deploymentSections.push(`**📦 Smart Contracts Deployed**
+            - AccountManager: \`${accountManagerAddress}\`
+            - Minter: \`${minterAddress}\`
+            - GMCoin: \`${gmcoinAddress}\`
+            - Treasury: \`${treasuryAddress}\``);
+          }
+          
+          if (dbDeployed) {
+            deploymentSections.push(`**🗄️ Database Created/Migrated**
+            - Database Name: \`${dbName}\``);
+          }
+          
+          const commentBody = `## 🚀 Deployment Complete
+          
+          ${deploymentSections.join('\n\n')}`;
+          
+          // Find all existing comments with deployment marker
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+          });
+          
+          const existingComments = comments.data.filter(comment => 
+            comment.body.includes('## 🚀 Deployment Complete') &&
+            comment.user.type === 'Bot'
+          );
+          
+          // Delete all old deployment comments
+          for (const comment of existingComments) {
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: comment.id,
+            });
+            console.log(`Deleted old deployment comment: ${comment.id}`);
+          }
+          
+          // Create new comment with deployment info
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: commentBody,
+          });
+          console.log('Created new deployment comment');
+
+    - name: Deploy to Vercel
+      id: vercel-deploy
+      run: |
+        # Use the actual PR head commit SHA (not merge commit)
+        PR_COMMIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+
+        COMMIT_AUTHOR_NAME=$(git log -1 $PR_COMMIT_SHA --format='%an')
+        COMMIT_AUTHOR_EMAIL=$(git log -1 $PR_COMMIT_SHA --format='%ae')
+        COMMIT_SHA=$PR_COMMIT_SHA
+        COMMIT_MESSAGE=$(git log -1 $PR_COMMIT_SHA --format='%s')
+        BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+        
+        echo "📦 Deploying to Vercel with:"
+        echo "  Branch: $BRANCH_NAME"
+        echo "  Commit: $COMMIT_SHA"
+        echo "  Commit Message: $COMMIT_MESSAGE"
+        echo "  Author: $COMMIT_AUTHOR_NAME <$COMMIT_AUTHOR_EMAIL>"
+        
+        # Deploy frontend to Vercel
+        cd frontend
+        PREVIEW_URL=$(vercel deploy \
+          --token=${{ secrets.VERCEL_TOKEN }} \
+          -m githubCommitRef=$BRANCH_NAME \
+          -m githubCommitSha=$COMMIT_SHA \
+          -m githubCommitAuthorName="$COMMIT_AUTHOR_NAME" \
+          -m githubCommitAuthorEmail="$COMMIT_AUTHOR_EMAIL" \
+          -m githubCommitMessage="$COMMIT_MESSAGE" \
+          -e DB_CONNECTION_STRING="${{ env.NEW_DB_CONNECTION_STRING }}" \
+          -e NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS="${{ env.ACCOUNT_MANAGER_ADDRESS }}" \
+          -e NEXT_PUBLIC_MINTER_ADDRESS="${{ env.MINTER_ADDRESS }}" \
+          -e NEXT_PUBLIC_GMCOIN_ADDRESS="${{ env.GMCOIN_ADDRESS }}" \
+          -e NEXT_PUBLIC_TREASURY_ADDRESS="${{ env.TREASURY_ADDRESS }}" \
+          -e NEXT_PUBLIC_W3F_MANAGER_ADDRESS="${{ secrets.W3F_MANAGER_ADDRESS }}" \
+          -e NEXT_PUBLIC_ENV=preview)
+        
+        echo "✅ Preview URL: $PREVIEW_URL"
+        echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+        
+        # Save deployment URL to cache for preview deployment
+        echo "$PREVIEW_URL" > ../latest-deployment-url.txt
+        cd ..
+      env:
+        VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+    - name: Cache latest deployment URL
+      uses: actions/cache@v4
+      if: steps.vercel-deploy.outputs.preview_url != ''
+      with:
+        path: latest-deployment-url.txt
+        key: latest-deployment-url-${{ github.head_ref || github.ref_name }}
+        restore-keys: |
+          latest-deployment-url-${{ github.head_ref || github.ref_name }}-
+
+    - name: Get branch preview URL from aliases
+      id: get-branch-preview
+      if: steps.vercel-deploy.outputs.preview_url != ''
+      run: |
+        PREVIEW_URL="${{ steps.vercel-deploy.outputs.preview_url }}"
+        
+        # Remove protocol from preview URL for matching
+        PREVIEW_DOMAIN=$(echo "$PREVIEW_URL" | sed 's|https\?://||')
+        
+        echo "🔍 Looking up branch preview URL for: $PREVIEW_DOMAIN"
+        
+        # Get aliases list using vercel alias ls
+        ALIASES_OUTPUT=$(vercel alias ls \
+          --token=${{ secrets.VERCEL_TOKEN }} \
+          --scope=${{ vars.VERCEL_ORG_ID }} 2>&1)
+        
+        echo "Aliases output:"
+        echo "$ALIASES_OUTPUT"
+        
+        # Find line containing preview URL, then get second column value
+        # The output is a table with columns: source | url | age
+        BRANCH_PREVIEW_URL=$(echo "$ALIASES_OUTPUT" | grep "$PREVIEW_DOMAIN" | awk '{print $2}')
+        
+        # Ensure URL has protocol
+        if [ -n "$BRANCH_PREVIEW_URL" ] && [ "$BRANCH_PREVIEW_URL" != "null" ]; then
+          if [[ ! "$BRANCH_PREVIEW_URL" =~ ^https?:// ]]; then
+            BRANCH_PREVIEW_URL="https://$BRANCH_PREVIEW_URL"
+          fi
+        fi
+        
+        echo "🔗 Branch Preview URL: $BRANCH_PREVIEW_URL"
+        echo "branch_preview_url=$BRANCH_PREVIEW_URL" >> $GITHUB_OUTPUT
+      env:
+        VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+    - name: Comment PR with Vercel Preview
+      if: steps.vercel-deploy.outputs.preview_url != ''
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const previewUrl = '${{ steps.vercel-deploy.outputs.preview_url }}';
+          const branchPreviewUrl = '${{ steps.get-branch-preview.outputs.branch_preview_url }}';
+          const prNumber = context.payload.pull_request.number;
+          
+          let urlsSection = '';
+          
+          if (branchPreviewUrl && branchPreviewUrl !== 'null' && branchPreviewUrl !== '') {
+            urlsSection += `**🔗 [Branch Preview](${branchPreviewUrl})**\n${branchPreviewUrl}`;
+          }
+          
+          if (previewUrl) {
+            if (urlsSection) {
+              urlsSection += '\n\n';
+            }
+            urlsSection += `**Latest Deployment URL:**\n${previewUrl}`;
+          }
+          
+          const commentBody = `## 🚀 Vercel Preview Deployment
+          
+          Preview deployment is ready:
+          
+          ${urlsSection}`;
+          
+          // Find all existing comments with Vercel preview marker
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+          });
+          
+          const existingComments = comments.data.filter(comment => 
+            comment.body.includes('## 🚀 Vercel Preview Deployment') &&
+            comment.user.type === 'Bot'
+          );
+          
+          // Delete all old Vercel preview comments
+          for (const comment of existingComments) {
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: comment.id,
+            });
+            console.log(`Deleted old Vercel preview comment: ${comment.id}`);
+          }
+          
+          // Create new comment with latest preview URL
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: commentBody,
+          });
+          console.log('Created new Vercel preview comment');
+
