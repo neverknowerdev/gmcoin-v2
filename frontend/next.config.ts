@@ -75,6 +75,41 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  webpack: (config, { isServer }) => {
+    // Ignore test files from thread-stream and other packages
+    const webpack = require('webpack');
+    config.plugins = config.plugins || [];
+    
+    // Ignore specific thread-stream test files that cause build errors
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /thread-stream\/test\/(close-on-gc|create-and-exit|esm|thread-management)\.(js|mjs)$/,
+      })
+    );
+
+    // Ignore all test files in node_modules
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /\.test\.(js|mjs|ts|tsx)$/,
+        contextRegExp: /node_modules/,
+      })
+    );
+
+    // Ignore optional dependencies that may not be available
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^@react-native-async-storage\/async-storage$/,
+      })
+    );
+
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^pino-pretty$/,
+      })
+    );
+
+    return config;
+  },
   async headers() {
     return [
       {

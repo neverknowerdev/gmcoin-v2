@@ -253,7 +253,6 @@ export default function SocialPage() {
         xConnection={xConnection}
         farcasterConnection={farcasterConnection}
         onConnectX={handleConnectX}
-        onConnectFarcaster={handleConnectFarcaster}
         onDisconnectFarcaster={handleDisconnectFarcaster}
       />
 

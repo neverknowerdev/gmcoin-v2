@@ -19,13 +19,11 @@ export function ConnectSocialScreen({
   onConnectFarcaster,
   farcasterConnection,
 }: ConnectSocialScreenProps) {
-  const signInState = useSignIn();
+  const signInState = useSignIn({});
   const { data: farcasterAuthData } = signInState;
 
-  // Helper function to extract FID from message or error
-  const extractFid = (msg: any, err: any): string | null => {
-    if (msg?.fid) return String(msg.fid);
-    if (msg?.data?.fid) return String(msg.data.fid);
+  // Helper function to extract FID from error
+  const extractFid = (err: any): string | null => {
     if (err) {
       const errorString = err?.message || err?.toString() || "";
       const fidMatch = errorString.match(/args:\s*\((\d+),/);
@@ -156,7 +154,7 @@ export function ConnectSocialScreen({
                 }}
                 onError={async (error) => {
                   // Extract FID from error and fetch profile
-                  const extractedFid = extractFid(signInState.message, error);
+                  const extractedFid = extractFid(error);
                   
                   if (extractedFid) {
                     try {

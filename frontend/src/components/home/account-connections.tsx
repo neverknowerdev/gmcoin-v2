@@ -21,16 +21,12 @@ export function AccountConnections({
   onDisconnectX,
   onDisconnectFarcaster,
 }: AccountConnectionsProps) {
-  // Use useSignIn to get profile data even if verification fails
-  const signInState = useSignIn();
-  const { data: farcasterAuthData, isSuccess, isError, error, message, fid } = signInState;
+  // Use useSignIn to get sign-in state
+  const signInState = useSignIn({});
+  const { data: farcasterAuthData, isSuccess, isError, error } = signInState;
 
-  // Helper function to extract FID from message or error
-  const extractFid = (msg: any, err: any): string | null => {
-    // Try to get FID from message if available
-    if (msg?.fid) return String(msg.fid);
-    if (msg?.data?.fid) return String(msg.data.fid);
-    
+  // Helper function to extract FID from error
+  const extractFid = (err: any): string | null => {
     // Try to extract from error message
     if (err) {
       const errorString = err?.message || err?.toString() || "";
@@ -42,21 +38,6 @@ export function AccountConnections({
     
     return null;
   };
-
-  // Debug logging - log entire signInState to see what's available
-  useEffect(() => {
-    console.log("🔍 useSignIn full state:", signInState);
-    console.log("🔍 useSignIn extracted:", {
-      hasData: !!farcasterAuthData,
-      data: farcasterAuthData,
-      message,
-      fid,
-      isSuccess,
-      isError,
-      error,
-      extractedFid: extractFid(message, error),
-    });
-  }, [signInState, farcasterAuthData, message, fid, isSuccess, isError, error]);
 
   // Store profile when we get it from useSignIn data (works even if verification fails)
   useEffect(() => {
@@ -199,8 +180,8 @@ export function AccountConnections({
             onError={async (error) => {
               console.error("❌ SignInButton onError:", error);
               
-              // Extract FID from error message or sign-in message
-              const extractedFid = extractFid(message, error);
+              // Extract FID from error message
+              const extractedFid = extractFid(error);
               
               if (extractedFid) {
                 console.log("🔍 Extracted FID:", extractedFid);
