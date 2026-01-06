@@ -51,7 +51,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error WalletNotLinked();
     error CannotRemoveUserActiveWorkers();
 
-    error GelatoOnly();
+    error OnlyICPCanisterCanCall();
 
     // Storage variables
     Timelock.Storage public timelockStorage;
@@ -76,7 +76,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     modifier onlyICPCanister() {
         if (_msgSender() != icpGmAccountManagementMsgSender)
-            revert GelatoOnly();
+            revert OnlyICPCanisterCanCall();
         _;
     }
 
@@ -86,12 +86,12 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function initialize(
-        address _gelatoDedicatedMsgSender,
+        address _icpGmAccountManagementMsgSender,
         uint256 _timeDelay
     ) public initializer {
         __Ownable_init(_msgSender());
         __UUPSUpgradeable_init();
-        gelatoDedicatedMsgSender = _gelatoDedicatedMsgSender;
+        icpGmAccountManagementMsgSender = _icpGmAccountManagementMsgSender;
         timelockStorage.timeDelay = _timeDelay;
     }
 
