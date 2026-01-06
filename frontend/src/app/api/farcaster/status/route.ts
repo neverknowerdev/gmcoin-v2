@@ -2,8 +2,15 @@
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { FARCASTER_PROFILE_COOKIE } from "@/lib/server/farcaster-oauth";
-import type { FarcasterProfile } from "@/types/social";
+import { FARCASTER_PROFILE_COOKIE, deserializeFarcasterProfile } from "@/lib/server/farcaster-oauth";
+
+const decodeProfileCookie = (value: string) => {
+  try {
+    return deserializeFarcasterProfile(value);
+  } catch {
+    return null;
+  }
+};
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -13,10 +20,8 @@ export async function GET() {
     return NextResponse.json({ connected: false }, { headers: { "Cache-Control": "no-store" } });
   }
 
-  let profile: FarcasterProfile;
-  try {
-    profile = JSON.parse(rawProfile) as FarcasterProfile;
-  } catch {
+  const profile = decodeProfileCookie(rawProfile);
+  if (!profile) {
     const response = NextResponse.json(
       { connected: false },
       { headers: { "Cache-Control": "no-store" } }

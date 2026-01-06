@@ -42,6 +42,9 @@ export function useFarcasterSIWE() {
 
           // Call the contract to request verification
           // The contract function will use the connected wallet (msg.sender)
+          if (!profile.fid) {
+            throw new Error("Farcaster FID is not available");
+          }
           console.log("🔄 Requesting Farcaster verification for FID:", profile.fid, "Wallet:", address);
           const result = await requestFarcasterVerification(profile.fid);
           console.log("✅ Farcaster verification transaction submitted:", result);
@@ -54,7 +57,7 @@ export function useFarcasterSIWE() {
           
           if (hash) {
             console.log("📝 Transaction hash:", hash);
-            console.log("🔗 View on BaseScan:", `https://sepolia.basescan.org/tx/${hash}`);
+            console.log("🔗 View on BaseScan:", `https://basescan.org/tx/${hash}`);
           }
         } catch (error) {
           console.error("❌ Farcaster SIWE verification failed:", error);

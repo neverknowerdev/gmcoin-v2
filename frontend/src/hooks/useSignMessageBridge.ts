@@ -33,7 +33,7 @@ export function useSignMessageBridge() {
         }
 
         if (typeof (dynamicWallet as { getWalletClient?: () => Promise<any> }).getWalletClient === "function") {
-          const walletClient = await (dynamicWallet as { getWalletClient: () => Promise<any> }).getWalletClient();
+          const walletClient = await (dynamicWallet as unknown as { getWalletClient: () => Promise<any> }).getWalletClient();
           if (walletClient && typeof walletClient.signMessage === "function") {
             return walletClient.signMessage({
               account: address as `0x${string}`,

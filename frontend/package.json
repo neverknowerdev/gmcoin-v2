@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
@@ -13,6 +13,9 @@
   },
   "dependencies": {
     "@coinbase/onchainkit": "^1.1.2",
+    "@dfinity/agent": "^3.4.3",
+    "@dfinity/candid": "^3.4.3",
+    "@dfinity/identity": "^3.4.3",
     "@dynamic-labs/ethereum": "^4.47.0",
     "@dynamic-labs/sdk-react-core": "^4.47.0",
     "@farcaster/auth-kit": "^0.8.1",

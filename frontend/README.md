@@ -46,14 +46,10 @@ X_OAUTH_CLIENT_SECRET=your_client_secret
 X_OAUTH_REDIRECT_URI=http://localhost:3000/api/x/callback
 X_OAUTH_SCOPES=tweet.read users.read offline.access
 
-# Farcaster OAuth (optional, for OAuth flow)
-FARCASTER_OAUTH_CLIENT_ID=your_client_id
-FARCASTER_OAUTH_CLIENT_SECRET=your_client_secret
-FARCASTER_OAUTH_REDIRECT_URI=http://localhost:3000/api/farcaster/callback
-FARCASTER_OAUTH_AUTHORIZE_URL=https://warpcast.com/~/oauth/authorize
-FARCASTER_OAUTH_TOKEN_URL=https://api.warpcast.com/v2/oauth/token
-FARCASTER_OAUTH_USERINFO_URL=https://api.warpcast.com/v2/me
-FARCASTER_OAUTH_SCOPES=openid offline_access
+# Farcaster Authentication
+# NOTE: Farcaster uses Sign In with Farcaster (SIWF) via @farcaster/auth-kit
+# No environment variables are required - AuthKit handles authentication client-side
+# The profile is stored in cookies after successful sign-in
 ```
 
 ## Social Verification Implementation
@@ -88,42 +84,38 @@ Users connect their X account via OAuth, post a verification tweet with an auth 
 
 ### 2. Farcaster Verification
 
-Farcaster verification supports two flows:
+Farcaster verification uses **Sign In with Farcaster (SIWF)** via AuthKit, which is the recommended and only supported approach.
 
-#### A. SIWE Flow (Recommended)
+#### AuthKit Flow (Current Implementation)
 
-When users sign in with Farcaster using Sign-In with Ethereum (SIWE), the frontend automatically triggers verification.
+Users sign in with Farcaster using the `@farcaster/auth-kit` library, which provides a seamless authentication experience.
 
 **Flow:**
 
-1. **User Signs In with Farcaster**
-   - User clicks "Connect" on the Farcaster button in `WelcomeCard`
-   - `signInFarcaster()` from `@farcaster/auth-kit` is called
-   - User completes SIWE flow (signs message with their wallet)
+1. **User Clicks "Connect Farcaster"**
+   - User clicks the Farcaster connect button
+   - `useSignIn()` hook from `@farcaster/auth-kit` is called
+   - AuthKit displays a QR code for the user to scan
 
-2. **Authentication Complete**
-   - `useProfile()` hook returns profile with `fid`
-   - `isAuthenticated` becomes `true`
-   - Connected wallet address is available via `useWalletConnection()`
+2. **User Signs In**
+   - User scans QR code with their Farcaster client (Warpcast, etc.)
+   - User approves the sign-in request in their Farcaster app
+   - AuthKit receives the signature and profile data
 
-3. **Automatic Verification Trigger**
-   - `useFarcasterSIWE` hook detects authentication completion
-   - Checks that we have: `isAuthenticated`, `profile.fid`, and `address`
-   - Calls `requestFarcasterVerification(fid, wallet)` on the contract
-   - Sets status to "pending"
+3. **Profile Storage**
+   - `onSuccess` callback in `useSignIn` is triggered with profile data (fid, username, displayName, pfpUrl)
+   - Frontend calls `/api/farcaster/store` to save profile in cookie
+   - Profile is stored using the same cookie pattern as X auth
 
-4. **Gelato W3F Processing**
-   - Gelato picks up `VerifyFarcasterRequested` event
-   - Fetches primary wallet for the FID from Farcaster API
-   - Verifies that the requesting wallet matches the FID's primary wallet
-   - If match: Calls `createOrLinkUser(wallet, twitterID, farcasterFid)`
-   - If mismatch: Calls `farcasterVerificationError(fid, wallet, errorMsg)`
-   - Emits `FarcasterVerificationResult` event
+4. **Profile Display**
+   - Frontend fetches profile from `/api/farcaster/status`
+   - Username and profile picture are displayed throughout the app
+   - Profile persists in cookie for 30 days
 
-5. **Frontend Updates**
-   - `useFarcasterSIWE` hook listens for `FarcasterVerificationResult` events
-   - Updates verification status to "success" or "error"
-   - UI shows "Verifying…" during the process
+**API Routes:**
+- `/api/farcaster/store` - Stores Farcaster profile in cookie (POST)
+- `/api/farcaster/status` - Retrieves stored Farcaster profile (GET)
+- `/api/farcaster/disconnect` - Removes Farcaster profile cookie (POST/DELETE)
 
 **Hook: `useFarcasterSIWE`**
 
@@ -139,25 +131,13 @@ When users sign in with Farcaster using Sign-In with Ethereum (SIWE), the fronte
   - Handles errors and allows retry
   - Updates UI status based on events
 
-#### B. OAuth Flow (Legacy)
+**Key Features:**
 
-Users connect their Farcaster account via OAuth, and the frontend automatically calls the contract to request verification.
-
-**Flow:**
-
-1. User clicks "Connect Farcaster" → OAuth flow starts
-2. User authorizes app → OAuth callback stores profile in cookie
-3. Frontend detects OAuth completion → Automatically calls `requestFarcasterVerification(fid, wallet)`
-4. Gelato picks up event → Verifies wallet matches FID's primary wallet
-5. Gelato calls `createOrLinkUser` → Emits `FarcasterVerificationResult` event
-6. Frontend listens for event → Updates verification status
-
-**Differences:**
-
-- **SIWE Flow**: Uses `@farcaster/auth-kit`, wallet connected as part of SIWE, no OAuth redirect
-- **OAuth Flow**: Uses OAuth redirect, profile stored in cookies, separate from wallet connection
-
-Both flows are supported, but SIWE is the recommended approach for better UX.
+- Uses `@farcaster/auth-kit` for authentication (no OAuth required)
+- Profile stored in cookies (same pattern as X auth)
+- Works seamlessly with existing X auth flow
+- No environment variables needed for Farcaster authentication
+- Profile data includes: fid, username, displayName, pfpUrl
 
 ## Implementation Details
 

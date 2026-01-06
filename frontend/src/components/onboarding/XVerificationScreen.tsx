@@ -204,7 +204,7 @@ export function XVerificationScreen({
             <div className="mb-4 w-full max-w-xs rounded-lg bg-blue-100 p-3 text-sm text-blue-800">
               <p className="font-semibold">Transaction submitted!</p>
               <a
-                href={`https://sepolia.basescan.org/tx/${hash}`}
+                href={`https://basescan.org/tx/${hash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs underline"

@@ -9,12 +9,10 @@ import {
 } from "react";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
 import { useMiniKit, useOpenUrl } from "@coinbase/onchainkit/minikit";
-import { useAccountManager } from "@/hooks/useAccountManager";
-// Temporarily disabled - Gelato not verified yet
-// import { useVerificationEvents } from "@/hooks/useAccountManager";
+import { useAccountManager, useVerificationEvents } from "@/hooks/useAccountManager";
 import { generateTwitterAuthCode } from "@/lib/twitter-auth-code";
 import type { XProfile } from "@/types/social";
-import { useSignIn, useProfile } from "@farcaster/auth-kit";
+import type { FarcasterProfile } from "@/types/social";
 import { WelcomeScreen } from "./onboarding/WelcomeScreen";
 import { EarnScreen } from "./onboarding/EarnScreen";
 import { ConnectSocialScreen } from "./onboarding/ConnectSocialScreen";
@@ -84,17 +82,8 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   const openUrl = useOpenUrl();
   const [step, setStep] = useState(0);
   const [xConnection, setXConnection] = useState<XProfile | null>(null);
+  const [farcasterConnection, setFarcasterConnection] = useState<FarcasterProfile | null>(null);
   const [tweetID, setTweetID] = useState("");
-  
-  // Farcaster SIWE hooks
-  const {
-    connect: connectFarcaster,
-    signIn: signInFarcaster,
-    isConnected: isFarcasterConnected,
-    url: farcasterUrl,
-  } = useSignIn({});
-  
-  const { profile: farcasterProfile } = useProfile();
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<{
     status: "pending" | "success" | "error";
@@ -103,7 +92,22 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   const [codeCopied, setCodeCopied] = useState(false);
   const [authCode, setAuthCode] = useState<string>("");
   
-  const { requestTwitterVerification, isPending, hash, isConfirmed, error: txError, isCorrectChain, chainId } = useAccountManager();
+  const { 
+    requestTwitterVerification, 
+    requestFarcasterVerification,
+    isPending, 
+    hash, 
+    isConfirmed, 
+    error: txError, 
+    isCorrectChain, 
+    chainId 
+  } = useAccountManager();
+  
+  const [farcasterVerificationStatus, setFarcasterVerificationStatus] = useState<{
+    status: "pending" | "success" | "error";
+    message?: string;
+  } | null>(null);
+  const [isFarcasterVerifying, setIsFarcasterVerifying] = useState(false);
   
   // Generate auth code once when address is available
   useEffect(() => {
@@ -154,23 +158,37 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
     }
   }, []);
 
+  // Check Farcaster connection status
+  const refreshFarcasterConnection = useCallback(async () => {
+    try {
+      const response = await fetch("/api/farcaster/status", { cache: "no-store" });
+      if (response.ok) {
+        const payload = await response.json();
+        setFarcasterConnection(payload.connected ? payload.profile ?? null : null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch Farcaster connection status:", error);
+    }
+  }, []);
+
 
   useEffect(() => {
     // Defer async call to avoid synchronous setState in effect
     setTimeout(() => {
       void refreshXConnection();
+      void refreshFarcasterConnection();
     }, 0);
-  }, [refreshXConnection]);
+  }, [refreshXConnection, refreshFarcasterConnection]);
 
-  // Navigate to confirmation screen when Farcaster is authenticated via SIWE
+  // Navigate to confirmation screen when Farcaster is connected
   useEffect(() => {
-    if (isFarcasterConnected && farcasterProfile && step === 2) {
+    if (farcasterConnection && step === 2) {
       // Defer state update to avoid synchronous setState in effect
       setTimeout(() => {
         setStep(5);
       }, 0);
     }
-  }, [isFarcasterConnected, farcasterProfile, step]);
+  }, [farcasterConnection, step]);
 
   // Listen for X and Farcaster connection from popup message (not URL params to avoid navigation)
   useEffect(() => {
@@ -183,15 +201,13 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
       
       if (event.data?.type === "X_AUTH_SUCCESS" && event.data?.connected) {
         void refreshXConnection();
-        // Navigate to success screen after X connection
-        // Temporarily skip verification screen (step 3) and go to success (step 4)
-        if (step === 2 || step === 3) {
-          setStep(4);
+        // If user is on connect screen (step 2), navigate to verification screen (step 3)
+        // User must complete verification before proceeding to success screen
+        if (step === 2) {
+          setStep(3);
         }
+        // If already on verification screen (step 3), stay there - don't skip verification
       }
-      
-      // Farcaster uses SIWE, so no popup message needed
-      // Connection is handled via useProfile hook
     };
 
     window.addEventListener("message", handleMessage);
@@ -201,22 +217,50 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
     };
   }, [refreshXConnection, step]);
 
-  // Temporarily disabled verification events - Gelato not verified yet
-  // useVerificationEvents(
-  //   (twitterID, wallet, isSuccess, errorMsg) => {
-  //     if (wallet.toLowerCase() === address?.toLowerCase() && xConnection?.id === twitterID) {
-  //       if (isSuccess) {
-  //         setVerificationStatus({ status: "success", message: "X account verified successfully!" });
-  //         setTimeout(() => {
-  //           markComplete();
-  //         }, 2000);
-  //       } else {
-  //         setVerificationStatus({ status: "error", message: errorMsg || "Verification failed" });
-  //       }
-  //     }
-  //   },
-  //   undefined
-  // );
+  // Poll for Farcaster connection status when on connect screen
+  useEffect(() => {
+    if (step === 2 && !farcasterConnection) {
+      const interval = setInterval(() => {
+        void refreshFarcasterConnection();
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [step, farcasterConnection, refreshFarcasterConnection]);
+
+  // Listen for verification events
+  useVerificationEvents(
+    (twitterID, wallet, isSuccess, errorMsg) => {
+      if (wallet.toLowerCase() === address?.toLowerCase() && xConnection?.id === twitterID) {
+        if (isSuccess) {
+          setVerificationStatus({ status: "success", message: "X account verified successfully!" });
+          // Auto-advance to success screen after verification
+          if (step === 3) {
+            setTimeout(() => {
+              setStep(4);
+            }, 1500);
+          }
+        } else {
+          setVerificationStatus({ status: "error", message: errorMsg || "Verification failed" });
+        }
+      }
+    },
+    (farcasterFid, wallet, isSuccess, errorMsg) => {
+      if (wallet.toLowerCase() === address?.toLowerCase() && farcasterConnection?.fid?.toString() === farcasterFid) {
+        setIsFarcasterVerifying(false);
+        if (isSuccess) {
+          setFarcasterVerificationStatus({ status: "success", message: "Farcaster account verified successfully!" });
+          // Auto-advance to success screen after verification
+          if (step === 5) {
+            setTimeout(() => {
+              setStep(6);
+            }, 1500);
+          }
+        } else {
+          setFarcasterVerificationStatus({ status: "error", message: errorMsg || "Verification failed" });
+        }
+      }
+    }
+  );
 
   const handleConnectX = useCallback(() => {
     // Navigate to verification screen first so user can see the code
@@ -293,26 +337,57 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   }, [address, xConnection, tweetID, authCode, isCorrectChain, chainId, requestTwitterVerification]);
 
   const handleConnectFarcaster = useCallback(async () => {
-    try {
-      // Use Farcaster Auth Kit SIWE
-      await connectFarcaster();
-      if (farcasterUrl && typeof window !== "undefined") {
-        if (isMiniApp) {
-          void openUrl(farcasterUrl);
-        } else {
-          window.open(farcasterUrl, "_blank", "noopener,noreferrer");
-        }
-      }
-      await signInFarcaster();
-    } catch (error) {
-      console.error("Failed to connect Farcaster:", error);
-    }
-  }, [connectFarcaster, signInFarcaster, farcasterUrl, isMiniApp, openUrl]);
+    // SignInButton handles the connection, just refresh status
+    await refreshFarcasterConnection();
+  }, [refreshFarcasterConnection]);
 
-  const handleConfirmFarcaster = useCallback(() => {
-    // After confirming, navigate to success screen
-    setStep(6);
-  }, []);
+  const handleConfirmFarcaster = useCallback(async () => {
+    if (!address || !farcasterConnection?.fid) {
+      setFarcasterVerificationStatus({ 
+        status: "error", 
+        message: "Please connect your wallet and Farcaster account first" 
+      });
+      return;
+    }
+
+    if (!isCorrectChain) {
+      setFarcasterVerificationStatus({ 
+        status: "error", 
+        message: `Wrong network! Please switch to Base Sepolia. Current chain: ${chainId}` 
+      });
+      return;
+    }
+
+    setIsFarcasterVerifying(true);
+    setFarcasterVerificationStatus({ status: "pending", message: "Submitting verification..." });
+
+    try {
+      await requestFarcasterVerification(farcasterConnection.fid);
+      // Hash will be set by useAccountManager hook
+      setFarcasterVerificationStatus({ 
+        status: "pending", 
+        message: "Transaction submitted. Waiting for confirmation..." 
+      });
+    } catch (err) {
+      setIsFarcasterVerifying(false);
+      const errorMessage = err instanceof Error ? err.message : "Failed to submit verification";
+      setFarcasterVerificationStatus({ status: "error", message: errorMessage });
+    }
+  }, [address, farcasterConnection, isCorrectChain, chainId, requestFarcasterVerification]);
+  
+  // Track Farcaster transaction confirmation
+  useEffect(() => {
+    if (isFarcasterVerifying && hash && isConfirmed) {
+      // Use setTimeout to avoid synchronous setState warning
+      const timer = setTimeout(() => {
+        setFarcasterVerificationStatus({ 
+          status: "pending", 
+          message: "Transaction confirmed! Waiting for verification..." 
+        });
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isFarcasterVerifying, hash, isConfirmed]);
 
   const handleNext = () => {
     if (step < SLIDES.length - 1) {
@@ -364,6 +439,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
               description={currentSlide.description || ""}
               onConnectX={handleConnectX}
               onConnectFarcaster={handleConnectFarcaster}
+              farcasterConnection={farcasterConnection}
             />
           ) : isVerificationSlide ? (
             <XVerificationScreen
@@ -405,8 +481,15 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
             <FarcasterConfirmationScreen
               title={currentSlide.title}
               description={currentSlide.description || ""}
-              isFarcasterConnected={isFarcasterConnected}
-              farcasterProfile={farcasterProfile}
+              isFarcasterConnected={!!farcasterConnection}
+              farcasterProfile={farcasterConnection}
+              verificationStatus={farcasterVerificationStatus}
+              verificationError={farcasterVerificationStatus?.status === "error" ? (farcasterVerificationStatus.message || null) : null}
+              hash={isFarcasterVerifying ? hash : undefined}
+              isConfirmed={isFarcasterVerifying ? isConfirmed : false}
+              txError={txError}
+              isPending={isPending && isFarcasterVerifying}
+              address={address}
               onConfirm={handleConfirmFarcaster}
               onConnectFarcaster={handleConnectFarcaster}
             />
@@ -421,8 +504,8 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
               title={currentSlide.title}
               description={currentSlide.description || ""}
               xConnection={xConnection}
-              isFarcasterConnected={isFarcasterConnected}
-              farcasterProfile={farcasterProfile}
+              isFarcasterConnected={!!farcasterConnection}
+              farcasterProfile={farcasterConnection}
               onConnectX={handleConnectX}
               onConnectFarcaster={handleConnectFarcaster}
               onSignUp={() => setStep(8)}
