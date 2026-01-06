@@ -1,17 +1,18 @@
 "use client";
 
-import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from "wagmi";
+import { useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from "wagmi";
 import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
 import { useCallback } from "react";
 import { baseSepolia } from "wagmi/chains";
+import { useWriteContractWithBuilderCode } from "./useWriteContractWithBuilderCode";
 
 const BASE_SEPOLIA_CHAIN_ID = baseSepolia.id; // 84532
 
 export function useAccountManager() {
   const { address } = useWalletConnection();
   const chainId = useChainId();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { writeContract, data: hash, isPending, error } = useWriteContractWithBuilderCode();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
