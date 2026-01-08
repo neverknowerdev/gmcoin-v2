@@ -338,39 +338,76 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     );
 
     // Unified User System Functions
-
     function createOrUpdateUser(
         uint256 userId,
-        address[] wallets,
+        address[] memory wallets,
         uint256 twitterId,
         uint256 farcasterFid,
         HumanVerification humanVerification
     ) public onlyICPCanister returns (uint256) {
+        uint256[] memory existingUserIds = new uint256[](0);
+        uint256 minimumExistingUserId = type(uint256).max;
         for (uint256 i = 0; i < wallets.length; i++) {
-            if (userWallets.userIdByWallet(wallets[i]) != userId) {
-                _removeUser(userWallets.userIdByWallet(wallets[i]), true);
+            uint256 existingUserId = userWallets.userIdByWallet(wallets[i]);
+            if (existingUserId != 0 && existingUserId != userId) {
+                existingUserIds.push(existingUserId);
+                if (existingUserId < minimumExistingUserId) {
+                    minimumExistingUserId = existingUserId;
+                }
             }
         }
 
-        if (twitterAccounts.userIdByAccountId(twitterId) != userId) {
-            _removeUser(twitterAccounts.userIdByAccountId(twitterId), true);
-        }
-
-        if (farcasterAccounts.userIdByAccountId(farcasterFid) != userId) {
-            _removeUser(
-                farcasterAccounts.userIdByAccountId(farcasterFid),
-                true
+        if (twitterId != 0) {
+            uint256 existingUserId = twitterAccounts.userIdByAccountId(
+                twitterId
             );
+            if (existingUserId != 0 && existingUserId != userId) {
+                existingUserIds.push(existingUserId);
+                if (existingUserId < minimumExistingUserId) {
+                    minimumExistingUserId = existingUserId;
+                }
+            }
         }
 
-        return _createOrUpdateUser(userId, wallets, twitterId, farcasterFid, humanVerification);
+        if (farcasterFid != 0) {
+            uint256 existingUserId = farcasterAccounts.userIdByAccountId(
+                farcasterFid
+            );
+            if (existingUserId != 0 && existingUserId != userId) {
+                existingUserIds.push(existingUserId);
+                if (existingUserId < minimumExistingUserId) {
+                    minimumExistingUserId = existingUserId;
+                }
+            }
+        }
+
+        if (existingUserIds.length > 0) {
+            userId = minimumExistingUserId;
+
+            if (existingUserIds.length > 1) {
+                for (uint256 i = 1; i < existingUserIds.length; i++) {
+                    if (existingUserIds[i] != minimumExistingUserId) {
+                        _removeUser(existingUserIds[i], true);
+                    }
+                }
+            }
+        }
+
+        return
+            _createOrUpdateUser(
+                userId,
+                wallets,
+                twitterId,
+                farcasterFid,
+                humanVerification
+            );
     }
 
     function _createOrUpdateUser(
         uint256 userId,
-        address[] wallets,
+        address[] memory wallets,
         uint256 twitterId,
-        uint256 farcasterFid
+        uint256 farcasterFid,
         HumanVerification humanVerification
     ) internal returns (uint256) {
         if (userIndexById[userId] == 0) {
@@ -382,7 +419,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         for (uint256 i = 0; i < wallets.length; i++) {
-            if (userWallets.userIdByWallet(wallets[i]) != 0) {
+            if (userWallets.userIdByWallet(wallets[i]) == 0) {
                 userWallets.addWallet(userId, wallets[i]);
             }
         }
@@ -410,7 +447,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             }
         }
 
-        if(humanVerificationByUserId[userId] != humanVerification) {
+        if (humanVerificationByUserId[userId] != humanVerification) {
             humanVerificationByUserId[userId] = humanVerification;
             emit HumanVerificationUpdated(userId, humanVerification);
         }
@@ -441,12 +478,9 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert WalletAlreadyLinked();
         }
 
-        userWallets.addWallet(
-            userWallets.userIdByWallet(_msgSender()),
-            newWallet
-        );
+        userWallets.addWallet(userId, newWallet);
 
-        emit WalletLinked(userId, wallet);
+        emit WalletLinked(userId, newWallet);
     }
 
     function setUserHumanVerification(
