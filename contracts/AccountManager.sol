@@ -191,6 +191,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
+    function twitterVerificationError(
+        address wallet,
+        uint256 twitterID,
+        string errorMsg
+    ) onlyICPCanister {
+        emit TwitterVerificationResult(wallet, twitterID, faslse, errorMsg);
+    }
+
     function getTwitterAccounts(
         uint64 start,
         uint16 count
@@ -270,6 +278,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address wallet,
         string calldata errorMsg
     ) external {
+        emit FarcasterVerificationResult(farcasterFid, wallet, false, errorMsg);
+    }
+
+    function farcasterVerificationError(
+        uint256 farcasterFid,
+        address wallet,
+        string calldata errorMsg
+    ) onlyICPCanister {
         emit FarcasterVerificationResult(farcasterFid, wallet, false, errorMsg);
     }
 
@@ -499,9 +515,9 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     //     _removeUser(userId);
     // }
 
-    // function removeMe() public {
-    //     removeUser(userWallets.userIdByWallet(_msgSender()));
-    // }
+    function removeMe() public {
+        _removeUser(userWallets.userIdByWallet(_msgSender()), false);
+    }
 
     // Query functions for unified users
     function totalUsersCount() public view returns (uint256) {
