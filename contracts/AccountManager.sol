@@ -85,14 +85,15 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _disableInitializers();
     }
 
-    function initialize(
-        address _icpGmAccountManagementMsgSender,
-        uint256 _timeDelay
-    ) public initializer {
+    function initialize() public initializer {
         __Ownable_init(_msgSender());
         __UUPSUpgradeable_init();
-        icpGmAccountManagementMsgSender = _icpGmAccountManagementMsgSender;
-        timelockStorage.timeDelay = _timeDelay;
+        
+        timelockStorage.timeDelay = 3 days;
+    }
+
+    function setICPAccountManagementAddress(address icpCanister) onlyOwner {
+        icpGmAccountManagementMsgSender = icpCanister
     }
 
     function _authorizeUpgrade(
