@@ -103,14 +103,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         timelockStorage.scheduleUpgrade(newImplementation);
     }
 
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override onlyOwner {
-        timelockStorage.checkTimeDelay(newImplementation);
-        super.upgradeToAndCall(newImplementation, data);
-        timelockStorage.clearUpgrade();
-    }
+    // function upgradeToAndCall(
+    //     address newImplementation,
+    //     bytes memory data
+    // ) public payable override onlyOwner {
+    //     timelockStorage.checkTimeDelay(newImplementation);
+    //     super.upgradeToAndCall(newImplementation, data);
+    //     timelockStorage.clearUpgrade();
+    // }
 
     // Twitter events
     event VerifyTwitterRequested(

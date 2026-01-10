@@ -70,14 +70,14 @@ contract GMCoinImplementation is
         timelockStorage.scheduleUpgrade(newImplementation);
     }
 
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override onlyOwner {
-        timelockStorage.checkTimeDelay(newImplementation);
-        super.upgradeToAndCall(newImplementation, data);
-        timelockStorage.clearUpgrade();
-    }
+    // function upgradeToAndCall(
+    //     address newImplementation,
+    //     bytes memory data
+    // ) public payable override onlyOwner {
+    //     timelockStorage.checkTimeDelay(newImplementation);
+    //     super.upgradeToAndCall(newImplementation, data);
+    //     timelockStorage.clearUpgrade();
+    // }
 
     function _update(
         address from,
