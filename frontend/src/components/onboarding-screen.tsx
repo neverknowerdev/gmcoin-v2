@@ -230,18 +230,32 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   // Listen for verification events
   useVerificationEvents(
     (twitterID, wallet, isSuccess, errorMsg) => {
+      console.log("🎯 Twitter verification event callback:", { 
+        twitterID, 
+        wallet, 
+        address, 
+        xConnectionId: xConnection?.id, 
+        isSuccess,
+        matchesWallet: wallet.toLowerCase() === address?.toLowerCase(),
+        matchesTwitter: xConnection?.id === twitterID
+      });
       if (wallet.toLowerCase() === address?.toLowerCase() && xConnection?.id === twitterID) {
         if (isSuccess) {
+          console.log("✅ Twitter verification successful, updating UI");
           setVerificationStatus({ status: "success", message: "X account verified successfully!" });
           // Auto-advance to success screen after verification
           if (step === 3) {
             setTimeout(() => {
+              console.log("🚀 Advancing to success screen");
               setStep(4);
             }, 1500);
           }
         } else {
+          console.log("❌ Twitter verification failed:", errorMsg);
           setVerificationStatus({ status: "error", message: errorMsg || "Verification failed" });
         }
+      } else {
+        console.log("⚠️ Event doesn't match current user/wallet");
       }
     },
     (farcasterFid, wallet, isSuccess, errorMsg) => {
