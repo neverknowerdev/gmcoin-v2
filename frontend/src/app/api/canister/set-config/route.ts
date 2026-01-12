@@ -1,58 +1,60 @@
 "use server";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createCanisterActor } from "@/lib/canister/client";
+import { setContractAddresses } from "@/lib/canister/client";
 import { ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
-import { ethers } from "ethers";
 
 /**
- * API route to configure the canister with contract address and event signatures
+ * API route to configure the canister with contract addresses
  * This should be called once after deployment to set up the canister
+ * 
+ * Contract addresses on Base Mainnet: 0x7ea1bc48c4CafE3349D696d14f0E3c9C63F02002
+ * Contract addresses on WorldChain: 0x7ea1bc48c4CafE3349D696d14f0E3c9C63F02002 (same address)
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { contractAddress, eventSignatures } = body;
+    const { baseMainnet, worldChain, baseMainnetGMCoin, worldChainGMCoin } = body;
 
-    // Use provided contract address or fall back to env variable
-    const accountManagerAddress = contractAddress || ACCOUNT_MANAGER_ADDRESS;
+    // Use provided contract addresses or fall back to env variable/default
+    const baseMainnetAccountManager = baseMainnet || ACCOUNT_MANAGER_ADDRESS;
+    const worldChainAccountManager = worldChain || ACCOUNT_MANAGER_ADDRESS;
 
-    if (accountManagerAddress === "0x0000000000000000000000000000000000000000") {
+    if (baseMainnetAccountManager === "0x0000000000000000000000000000000000000000") {
       return NextResponse.json(
-        { error: "Contract address not configured. Set NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS or provide contractAddress in request." },
+        { error: "Contract address not configured. Set NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS or provide baseMainnet in request." },
         { status: 400 }
       );
     }
 
-    // Calculate event signatures if not provided
-    const signatures = eventSignatures || {
-      VerifyTwitterByAuthCodeRequested: ethers.id("VerifyTwitterByAuthCodeRequested(address,string,string,uint256)"),
-      VerifyFarcasterRequested: ethers.id("VerifyFarcasterRequested(uint256,address)"),
-    };
-
     const config = {
       contracts: {
-        "Base Mainnet": [accountManagerAddress],
-        "WorldChain": [],
-        "Monad": [],
-      },
-      eventSignatures: {
-        VerifyTwitterByAuthCodeRequested: signatures.VerifyTwitterByAuthCodeRequested,
-        VerifyFarcasterRequested: signatures.VerifyFarcasterRequested,
+        "Base Mainnet": {
+          accountManager: baseMainnetAccountManager,
+          GMCoin: baseMainnetGMCoin || undefined,
+        },
+        "WorldChain": {
+          accountManager: worldChainAccountManager,
+          GMCoin: worldChainGMCoin || undefined,
+        },
       },
     };
 
-    // Call the canister to set configuration
-    const actor = await createCanisterActor();
-    await actor.setConfig(config);
+    // Call the canister to set contract addresses
+    await setContractAddresses(config);
 
     return NextResponse.json({
       success: true,
-      message: "Canister configuration updated successfully",
+      message: "Canister contract addresses updated successfully",
       config: {
-        contractAddress: accountManagerAddress,
-        chain: "Base Mainnet",
-        eventSignatures: signatures,
+        baseMainnet: {
+          accountManager: baseMainnetAccountManager,
+          GMCoin: baseMainnetGMCoin || null,
+        },
+        worldChain: {
+          accountManager: worldChainAccountManager,
+          GMCoin: worldChainGMCoin || null,
+        },
       },
     });
   } catch (error) {
@@ -74,9 +76,14 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     contractAddress: ACCOUNT_MANAGER_ADDRESS,
-    chain: "Base Mainnet",
-    canisterId: process.env.NEXT_PUBLIC_ICP_CANISTER_ID || "pbyvv-piaaa-aaaal-qs6cq-cai",
-    note: "Use POST to configure the canister with setConfig",
+    canisterId: process.env.NEXT_PUBLIC_ICP_CANISTER_ID || "ylges-qaaaa-aaaal-qtlsq-cai",
+    note: "Use POST to configure the canister with setContractAddresses",
+    example: {
+      baseMainnet: ACCOUNT_MANAGER_ADDRESS,
+      worldChain: ACCOUNT_MANAGER_ADDRESS,
+      baseMainnetGMCoin: "optional GMCoin address",
+      worldChainGMCoin: "optional GMCoin address",
+    },
   });
 }
 

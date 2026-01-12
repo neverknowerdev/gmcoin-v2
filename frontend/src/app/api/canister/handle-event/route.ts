@@ -10,20 +10,20 @@ import { handleCanisterEvent } from "@/lib/canister/client";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { chain, transactionId } = body;
+    const { chainId, transactionId } = body;
 
-    if (!chain || !transactionId) {
+    if (chainId === undefined || !transactionId) {
       return NextResponse.json(
-        { error: "Missing required fields: chain and transactionId" },
+        { error: "Missing required fields: chainId and transactionId" },
         { status: 400 }
       );
     }
 
-    // Validate chain name
-    const validChains = ["Base Mainnet", "WorldChain", "Monad"];
-    if (!validChains.includes(chain)) {
+    // Validate chain ID (must be a number)
+    const chainIdNum = typeof chainId === 'string' ? parseInt(chainId, 10) : chainId;
+    if (isNaN(chainIdNum) || chainIdNum <= 0) {
       return NextResponse.json(
-        { error: `Invalid chain. Must be one of: ${validChains.join(", ")}` },
+        { error: "Invalid chainId. Must be a positive number" },
         { status: 400 }
       );
     }
@@ -36,12 +36,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call the canister to process the event
-    await handleCanisterEvent(chain, transactionId);
+    // Call the canister to process the event (canister expects chainId as nat32)
+    await handleCanisterEvent(chainIdNum, transactionId);
 
     return NextResponse.json({
       success: true,
-      message: `Event processed for chain ${chain}, transaction ${transactionId}`,
+      message: `Event processed for chain ${chainIdNum}, transaction ${transactionId}`,
     });
   } catch (error) {
     console.error("Error processing canister event:", error);

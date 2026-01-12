@@ -5,19 +5,8 @@ import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
 import { useCallback, useEffect } from "react";
 import { base } from "wagmi/chains";
-import { chain as appChain } from "@/config/chains";
 
 const BASE_MAINNET_CHAIN_ID = base.id; // 8453
-
-/**
- * Get chain name for canister based on chain ID
- */
-function getChainNameForCanister(chainId: number): string {
-  if (chainId === BASE_MAINNET_CHAIN_ID) {
-    return "Base Mainnet";
-  }
-  throw new Error(`Unsupported chain ID: ${chainId}. Only Base Mainnet (${BASE_MAINNET_CHAIN_ID}) is supported.`);
-}
 
 export function useAccountManager() {
   const { address } = useWalletConnection();
@@ -32,8 +21,7 @@ export function useAccountManager() {
     if (isConfirmed && hash && chainId) {
       const triggerCanisterEvent = async () => {
         try {
-          const chainName = getChainNameForCanister(chainId);
-          console.log(`🔄 Triggering canister event processing for chain: ${chainName}, tx: ${hash}`);
+          console.log(`🔄 Triggering canister event processing for chain: ${chainId}, tx: ${hash}`);
           
           const response = await fetch("/api/canister/handle-event", {
             method: "POST",
@@ -41,7 +29,7 @@ export function useAccountManager() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              chain: chainName,
+              chainId: chainId,
               transactionId: hash,
             }),
           });
