@@ -318,7 +318,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
     setVerificationStatus({ status: "pending", message: "Verifying..." });
 
     if (!isCorrectChain) {
-      setVerificationError(`Wrong network! Please switch to Base Sepolia. Current chain: ${chainId}`);
+      setVerificationError(`Wrong network! Please switch to Base Mainnet. Current chain: ${chainId}`);
       return;
     }
 
@@ -353,7 +353,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
     if (!isCorrectChain) {
       setFarcasterVerificationStatus({ 
         status: "error", 
-        message: `Wrong network! Please switch to Base Sepolia. Current chain: ${chainId}` 
+        message: `Wrong network! Please switch to Base Mainnet. Current chain: ${chainId}` 
       });
       return;
     }

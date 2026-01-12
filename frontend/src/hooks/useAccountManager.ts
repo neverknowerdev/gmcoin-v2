@@ -1,6 +1,6 @@
 "use client";
 
-import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from "wagmi";
+import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId, useAccount, useConnect } from "wagmi";
 import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
 import { useCallback, useEffect } from "react";
@@ -11,6 +11,8 @@ const BASE_MAINNET_CHAIN_ID = base.id; // 8453
 export function useAccountManager() {
   const { address } = useWalletConnection();
   const chainId = useChainId();
+  const { isConnected, connector } = useAccount();
+  const { connect, connectors } = useConnect();
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
@@ -67,11 +69,30 @@ export function useAccountManager() {
         throw new Error("Wallet not connected");
       }
 
+      // Check if connector is connected and active
+      if (!isConnected) {
+        // Try to reconnect if we have a connector
+        if (connector) {
+          try {
+            console.log("🔄 Attempting to reconnect connector:", connector.name);
+            await connect({ connector });
+            // Wait a bit for connection to establish
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (err) {
+            console.error("❌ Failed to reconnect:", err);
+            throw new Error("Connector not connected. Please reconnect your wallet and try again.");
+          }
+        } else {
+          throw new Error("Connector not connected. Please connect your wallet first.");
+        }
+      }
+
       // Validate chain before transaction
       validateChain();
 
       console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
+      console.log("🔌 Connector:", connector?.name, "Connected:", isConnected);
 
       return writeContract({
         address: ACCOUNT_MANAGER_ADDRESS,
@@ -81,7 +102,7 @@ export function useAccountManager() {
         chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
       });
     },
-    [address, writeContract, validateChain, chainId]
+    [address, writeContract, validateChain, chainId, isConnected, connector, connect]
   );
 
   const requestFarcasterVerification = useCallback(
@@ -90,11 +111,30 @@ export function useAccountManager() {
         throw new Error("Wallet not connected");
       }
 
+      // Check if connector is connected and active
+      if (!isConnected) {
+        // Try to reconnect if we have a connector
+        if (connector) {
+          try {
+            console.log("🔄 Attempting to reconnect connector:", connector.name);
+            await connect({ connector });
+            // Wait a bit for connection to establish
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (err) {
+            console.error("❌ Failed to reconnect:", err);
+            throw new Error("Connector not connected. Please reconnect your wallet and try again.");
+          }
+        } else {
+          throw new Error("Connector not connected. Please connect your wallet first.");
+        }
+      }
+
       // Validate chain before transaction
       validateChain();
 
       console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
+      console.log("🔌 Connector:", connector?.name, "Connected:", isConnected);
 
       return writeContract({
         address: ACCOUNT_MANAGER_ADDRESS,
@@ -104,7 +144,7 @@ export function useAccountManager() {
         chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
       });
     },
-    [address, writeContract, validateChain, chainId]
+    [address, writeContract, validateChain, chainId, isConnected, connector, connect]
   );
 
   return {

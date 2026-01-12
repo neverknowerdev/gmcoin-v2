@@ -82,7 +82,7 @@ export function TwitterVerificationModal({
 
     // Check chain before submitting
     if (!isCorrectChain) {
-      setError(`Wrong network! Please switch to Base Sepolia. Current chain: ${chainId}`);
+      setError(`Wrong network! Please switch to Base Mainnet. Current chain: ${chainId}`);
       return;
     }
 
@@ -102,7 +102,7 @@ export function TwitterVerificationModal({
       
       // If it's a chain error, provide helpful message
       if (errorMessage.includes("network") || errorMessage.includes("chain")) {
-        setError(`${errorMessage}. Please switch to Base Sepolia in your wallet.`);
+        setError(`${errorMessage}. Please switch to Base Mainnet in your wallet.`);
       }
     }
   };
