@@ -23,6 +23,14 @@ export function useAccountManager() {
     hash: effectiveHash,
   });
 
+  // Log hash when it becomes available
+  useEffect(() => {
+    if (hash) {
+      console.log("📝 Transaction hash received:", hash);
+      console.log("📋 View transaction on BaseScan:", `https://basescan.org/tx/${hash}`);
+    }
+  }, [hash]);
+
   // Call canister after transaction is confirmed
   useEffect(() => {
     if (isConfirmed && effectiveHash && chainId) {
@@ -74,44 +82,162 @@ export function useAccountManager() {
         throw new Error("Wallet not connected");
       }
 
-      // If we have an address from useWalletConnection, the wallet is connected
-      // (useWalletConnection handles both wagmi and Dynamic wallet connections)
-      // For wagmi connectors, try to ensure connector is active if needed
-      if (!isConnected && connector && walletIsConnected) {
-        // Try to reconnect if we have a connector but wagmi thinks it's disconnected
-        // This can happen if the connection state is out of sync
-        try {
-          console.log("🔄 Attempting to reconnect connector:", connector.name);
-          await connect({ connector });
-          // Wait a bit for connection to establish
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (err) {
-          console.error("❌ Failed to reconnect:", err);
-          // If we have an address, we can still proceed - the wallet is connected
-          // even if wagmi's connector state is out of sync
+      // Validate that wallet is actually connected
+      if (!walletIsConnected || !address) {
+        throw new Error("Wallet not connected. Please connect your wallet first.");
+      }
+
+      // If wagmi connector is not connected, try to connect it
+      // This is needed because writeContract requires an active wagmi connector
+      if (!isConnected) {
+        console.log("🔍 Wallet connection check:", {
+          walletIsConnected,
+          isConnected,
+          hasConnector: !!connector,
+          connectorName: connector?.name,
+          connectorId: connector?.id,
+          availableConnectors: connectors.length,
+          connectorIds: connectors.map(c => ({ name: c.name, id: c.id })),
+          hasDynamicWallet: !!dynamicContext?.primaryWallet
+        });
+
+        // First, try to use the existing connector if available (works for Coinbase, etc.)
+        if (connector) {
+          try {
+            console.log("🔄 Reconnecting existing connector:", connector.name, connector.id);
+            await connect({ connector });
+            // Wait for connection to establish
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (err) {
+            console.error("❌ Failed to reconnect existing connector:", err);
+            // Continue to try other connectors if this fails
+          }
+        }
+
+        // If still not connected, try to find and connect the appropriate connector
+        if (!isConnected) {
+          const dynamicWallet = dynamicContext?.primaryWallet;
+          
+          if (dynamicWallet) {
+            console.log("🔍 Dynamic wallet detected, searching for connectors...");
+            
+            // Try to find Dynamic connector first
+            const dynamicConnector = connectors.find(c => {
+              const connectorId = (c as { id?: string }).id || '';
+              return c.id === 'dynamic' || 
+                     c.name?.toLowerCase().includes('dynamic') ||
+                     connectorId.includes('dynamic');
+            });
+            
+            if (dynamicConnector) {
+              try {
+                console.log("🔄 Connecting Dynamic wallet to wagmi...");
+                await connect({ connector: dynamicConnector });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              } catch (err) {
+                console.error("❌ Failed to connect Dynamic connector:", err);
+                // Continue to try other connectors
+              }
+            }
+
+            // If still not connected, try to find any connector that might work
+            // (e.g., Coinbase connector when using Coinbase Wallet through Dynamic)
+            if (!isConnected && connectors.length > 0) {
+              // Try all available connectors that haven't been tried yet
+              const triedConnectorIds = new Set([
+                connector?.id,
+                dynamicConnector?.id
+              ].filter(Boolean));
+
+              for (const connectorToTry of connectors) {
+                if (triedConnectorIds.has(connectorToTry.id)) continue;
+                
+                try {
+                  console.log("🔄 Trying connector:", connectorToTry.name, connectorToTry.id);
+                  await connect({ connector: connectorToTry });
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (err) {
+                  console.error(`❌ Failed to connect connector ${connectorToTry.name}:`, err);
+                  // Continue to next connector
+                }
+              }
+            }
+          } else if (connectors.length > 0) {
+            // If no Dynamic wallet but connectors available, try the first one
+            const connectorToTry = connector || connectors[0];
+            try {
+              console.log("🔄 Trying connector:", connectorToTry.name, connectorToTry.id);
+              await connect({ connector: connectorToTry });
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (err) {
+              console.error("❌ Failed to connect connector:", err);
+            }
+          }
+        }
+
+        // Final check - if still not connected after all attempts, throw error with helpful info
+        if (!isConnected) {
+          const availableConnectorNames = connectors.map(c => c.name || c.id).join(", ");
+          throw new Error(
+            `Wallet connector not found. Please reconnect your wallet. ` +
+            `Available connectors: ${availableConnectorNames || "none"}. ` +
+            `Current connector: ${connector?.name || connector?.id || "none"}`
+          );
         }
       }
 
       // Validate chain before transaction
       validateChain();
 
-      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
-      console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
-      console.log("🔌 Connector:", connector?.name, "Connected:", isConnected);
-
-      // Ensure we're using wagmi's writeContract (not Dynamic's direct sendTransaction)
-      // This ensures transactions go to the correct contract
-      if (!isConnected) {
-        throw new Error("Wallet not connected. Please connect your wallet through the wallet connector.");
+      // Verify contract address is set
+      if (!ACCOUNT_MANAGER_ADDRESS || ACCOUNT_MANAGER_ADDRESS === "0x0000000000000000000000000000000000000000") {
+        throw new Error("AccountManager contract address not configured. Please set NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS in your environment variables.");
       }
 
-      return writeContract({
-        address: ACCOUNT_MANAGER_ADDRESS,
-        abi: ACCOUNT_MANAGER_ABI,
+      // Expected contract address (from .env.local)
+      const EXPECTED_ADDRESS = "0x7ea1bc48c4CafE3349D696d14f0E3c9C63F02002";
+      if (ACCOUNT_MANAGER_ADDRESS.toLowerCase() !== EXPECTED_ADDRESS.toLowerCase()) {
+        console.warn("⚠️ Contract address mismatch!", {
+          current: ACCOUNT_MANAGER_ADDRESS,
+          expected: EXPECTED_ADDRESS,
+          message: "The contract address being used doesn't match the expected address. Please check your NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS environment variable and restart your dev server."
+        });
+      }
+
+      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
+      console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
+      console.log("📝 Env variable NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS:", process.env.NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS || "not set");
+      console.log("🔌 Connector:", connector?.name || "Unknown", "Connected:", isConnected);
+      console.log("📤 Sending transaction:", {
         functionName: "requestTwitterVerificationByAuthCode",
-        args: [authCode, BigInt(twitterID), tweetID],
-        chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
+        args: { authCode, twitterID, tweetID },
+        contractAddress: ACCOUNT_MANAGER_ADDRESS,
+        chainId: BASE_MAINNET_CHAIN_ID
       });
+
+      try {
+        // writeContract doesn't return the hash directly - it's set in the hook state
+        // The hash will be available in the `hash` variable from useWriteContract hook
+        await writeContract({
+          address: ACCOUNT_MANAGER_ADDRESS,
+          abi: ACCOUNT_MANAGER_ABI,
+          functionName: "requestTwitterVerificationByAuthCode",
+          args: [authCode, BigInt(twitterID), tweetID],
+          chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
+        });
+        console.log("✅ Transaction sent successfully. Hash will be available in hook state.");
+        // Note: The hash will be available via the `hash` variable from useWriteContract
+        // and will be logged when the transaction is confirmed
+        return undefined; // writeContract doesn't return the hash
+      } catch (error) {
+        console.error("❌ Error sending transaction:", error);
+        console.error("Transaction details:", {
+          address: ACCOUNT_MANAGER_ADDRESS,
+          functionName: "requestTwitterVerificationByAuthCode",
+          args: [authCode, BigInt(twitterID), tweetID]
+        });
+        throw error;
+      }
     },
     [address, writeContract, validateChain, chainId, isConnected, connector, connect, walletIsConnected, connectors, dynamicContext]
   );
@@ -130,70 +256,143 @@ export function useAccountManager() {
       // If wagmi connector is not connected, try to connect it
       // This is needed because writeContract requires an active wagmi connector
       if (!isConnected) {
-        // Try to find and connect the appropriate connector
-        const dynamicWallet = dynamicContext?.primaryWallet;
-        
-        if (dynamicWallet) {
-          // For Dynamic wallet, try to find the Dynamic connector in wagmi
-          const dynamicConnector = connectors.find(c => {
-            const connectorId = (c as { id?: string }).id || '';
-            return c.id === 'dynamic' || 
-                   c.name?.toLowerCase().includes('dynamic') ||
-                   connectorId.includes('dynamic');
-          });
-          
-          if (dynamicConnector) {
-            try {
-              console.log("🔄 Connecting Dynamic wallet to wagmi...");
-              await connect({ connector: dynamicConnector });
-              // Wait for connection to establish
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (err) {
-              console.error("❌ Failed to connect Dynamic connector:", err);
-              throw new Error("Failed to connect wallet to transaction system. Please try reconnecting your wallet.");
-            }
-          } else if (connector) {
-            // Try to reconnect existing connector
-            try {
-              console.log("🔄 Reconnecting existing connector:", connector.name);
-              await connect({ connector });
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (err) {
-              console.error("❌ Failed to reconnect connector:", err);
-              throw new Error("Failed to connect wallet to transaction system. Please try reconnecting your wallet.");
-            }
-          } else {
-            throw new Error("Wallet connector not found. Please reconnect your wallet.");
-          }
-        } else if (connector) {
-          // Try to reconnect existing connector
+        console.log("🔍 Wallet connection check:", {
+          walletIsConnected,
+          isConnected,
+          hasConnector: !!connector,
+          connectorName: connector?.name,
+          connectorId: connector?.id,
+          availableConnectors: connectors.length,
+          connectorIds: connectors.map(c => ({ name: c.name, id: c.id })),
+          hasDynamicWallet: !!dynamicContext?.primaryWallet
+        });
+
+        // First, try to use the existing connector if available (works for Coinbase, etc.)
+        if (connector) {
           try {
-            console.log("🔄 Reconnecting existing connector:", connector.name);
+            console.log("🔄 Reconnecting existing connector:", connector.name, connector.id);
             await connect({ connector });
+            // Wait for connection to establish
             await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (err) {
-            console.error("❌ Failed to reconnect connector:", err);
-            throw new Error("Failed to connect wallet to transaction system. Please try reconnecting your wallet.");
+            console.error("❌ Failed to reconnect existing connector:", err);
+            // Continue to try other connectors if this fails
           }
-        } else {
-          throw new Error("Wallet connector not available. Please reconnect your wallet.");
+        }
+
+        // If still not connected, try to find and connect the appropriate connector
+        if (!isConnected) {
+          const dynamicWallet = dynamicContext?.primaryWallet;
+          
+          if (dynamicWallet) {
+            console.log("🔍 Dynamic wallet detected, searching for connectors...");
+            
+            // Try to find Dynamic connector first
+            const dynamicConnector = connectors.find(c => {
+              const connectorId = (c as { id?: string }).id || '';
+              return c.id === 'dynamic' || 
+                     c.name?.toLowerCase().includes('dynamic') ||
+                     connectorId.includes('dynamic');
+            });
+            
+            if (dynamicConnector) {
+              try {
+                console.log("🔄 Connecting Dynamic wallet to wagmi...");
+                await connect({ connector: dynamicConnector });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              } catch (err) {
+                console.error("❌ Failed to connect Dynamic connector:", err);
+                // Continue to try other connectors
+              }
+            }
+
+            // If still not connected, try to find any connector that might work
+            // (e.g., Coinbase connector when using Coinbase Wallet through Dynamic)
+            if (!isConnected && connectors.length > 0) {
+              // Try all available connectors that haven't been tried yet
+              const triedConnectorIds = new Set([
+                connector?.id,
+                dynamicConnector?.id
+              ].filter(Boolean));
+
+              for (const connectorToTry of connectors) {
+                if (triedConnectorIds.has(connectorToTry.id)) continue;
+                
+                try {
+                  console.log("🔄 Trying connector:", connectorToTry.name, connectorToTry.id);
+                  await connect({ connector: connectorToTry });
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (err) {
+                  console.error(`❌ Failed to connect connector ${connectorToTry.name}:`, err);
+                  // Continue to next connector
+                }
+              }
+            }
+          } else if (connectors.length > 0) {
+            // If no Dynamic wallet but connectors available, try the first one
+            const connectorToTry = connector || connectors[0];
+            try {
+              console.log("🔄 Trying connector:", connectorToTry.name, connectorToTry.id);
+              await connect({ connector: connectorToTry });
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (err) {
+              console.error("❌ Failed to connect connector:", err);
+            }
+          }
+        }
+
+        // Final check - if still not connected after all attempts, throw error with helpful info
+        if (!isConnected) {
+          const availableConnectorNames = connectors.map(c => c.name || c.id).join(", ");
+          throw new Error(
+            `Wallet connector not found. Please reconnect your wallet. ` +
+            `Available connectors: ${availableConnectorNames || "none"}. ` +
+            `Current connector: ${connector?.name || connector?.id || "none"}`
+          );
         }
       }
 
       // Validate chain before transaction
       validateChain();
 
+      // Verify contract address is set
+      if (!ACCOUNT_MANAGER_ADDRESS || ACCOUNT_MANAGER_ADDRESS === "0x0000000000000000000000000000000000000000") {
+        throw new Error("AccountManager contract address not configured. Please set NEXT_PUBLIC_ACCOUNT_MANAGER_ADDRESS in your environment variables.");
+      }
+
       console.log("🔗 Chain ID:", chainId, "Expected:", BASE_MAINNET_CHAIN_ID);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
       console.log("🔌 Connector:", connector?.name || "Unknown", "Connected:", isConnected);
-
-      return writeContract({
-        address: ACCOUNT_MANAGER_ADDRESS,
-        abi: ACCOUNT_MANAGER_ABI,
+      console.log("📤 Sending transaction:", {
         functionName: "requestFarcasterVerification",
-        args: [BigInt(farcasterFid), address],
-        chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
+        args: { farcasterFid, address },
+        contractAddress: ACCOUNT_MANAGER_ADDRESS,
+        chainId: BASE_MAINNET_CHAIN_ID
       });
+
+      try {
+        // writeContract doesn't return the hash directly - it's set in the hook state
+        // The hash will be available in the `hash` variable from useWriteContract hook
+        await writeContract({
+          address: ACCOUNT_MANAGER_ADDRESS,
+          abi: ACCOUNT_MANAGER_ABI,
+          functionName: "requestFarcasterVerification",
+          args: [BigInt(farcasterFid), address],
+          chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
+        });
+        console.log("✅ Transaction sent successfully. Hash will be available in hook state.");
+        // Note: The hash will be available via the `hash` variable from useWriteContract
+        // and will be logged when the transaction is confirmed
+        return undefined; // writeContract doesn't return the hash
+      } catch (error) {
+        console.error("❌ Error sending transaction:", error);
+        console.error("Transaction details:", {
+          address: ACCOUNT_MANAGER_ADDRESS,
+          functionName: "requestFarcasterVerification",
+          args: [BigInt(farcasterFid), address]
+        });
+        throw error;
+      }
     },
     [address, writeContract, validateChain, chainId, isConnected, connector, connect, walletIsConnected, connectors, dynamicContext]
   );
@@ -216,6 +415,12 @@ export function useVerificationEvents(
   onTwitterVerified?: (twitterID: string, wallet: string, isSuccess: boolean, errorMsg: string) => void,
   onFarcasterVerified?: (farcasterFid: string, wallet: string, isSuccess: boolean, errorMsg: string) => void
 ) {
+  console.log("🔍 Setting up TwitterVerificationResult event listener:", {
+    address: ACCOUNT_MANAGER_ADDRESS,
+    chainId: BASE_MAINNET_CHAIN_ID,
+    hasCallback: !!onTwitterVerified
+  });
+  
   useWatchContractEvent({
     address: ACCOUNT_MANAGER_ADDRESS,
     abi: ACCOUNT_MANAGER_ABI,
@@ -223,18 +428,31 @@ export function useVerificationEvents(
     chainId: BASE_MAINNET_CHAIN_ID,
     onLogs(logs) {
       console.log("📢 TwitterVerificationResult event received:", logs);
-      logs.forEach((log) => {
+      console.log("📢 Number of logs:", logs.length);
+      logs.forEach((log, index) => {
         const { twitterID, wallet, isSuccess, errorMsg } = log.args;
-        console.log("📢 TwitterVerificationResult:", { 
+        console.log(`📢 TwitterVerificationResult [${index}]:`, { 
           twitterID: twitterID?.toString(), 
           wallet, 
           isSuccess, 
-          errorMsg 
+          errorMsg,
+          blockNumber: log.blockNumber,
+          transactionHash: log.transactionHash
         });
         if (onTwitterVerified && twitterID && wallet) {
           onTwitterVerified(twitterID.toString(), wallet, isSuccess ?? false, errorMsg || "");
         }
       });
+    },
+    onError(error: any) {
+      // Coinbase RPC doesn't support filters well - this is expected
+      // Silently handle filter errors, but log other errors
+      if (error?.message?.includes("filter not found") || error?.message?.includes("Invalid parameters")) {
+        // This is expected with Coinbase RPC - filters aren't well supported
+        // The polling mechanism will handle verification status checking
+        return;
+      }
+      console.error("❌ Error in TwitterVerificationResult event listener:", error);
     },
   });
 

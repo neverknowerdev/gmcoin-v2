@@ -230,16 +230,27 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   // Listen for verification events
   useVerificationEvents(
     (twitterID, wallet, isSuccess, errorMsg) => {
+      // Convert both to strings for comparison (twitterID might be BigInt)
+      const twitterIDStr = twitterID?.toString();
+      const xConnectionIdStr = xConnection?.id?.toString();
+      
       console.log("🎯 Twitter verification event callback:", { 
-        twitterID, 
+        twitterID: twitterIDStr, 
         wallet, 
         address, 
-        xConnectionId: xConnection?.id, 
+        xConnectionId: xConnectionIdStr, 
         isSuccess,
         matchesWallet: wallet.toLowerCase() === address?.toLowerCase(),
-        matchesTwitter: xConnection?.id === twitterID
+        matchesTwitter: xConnectionIdStr === twitterIDStr,
+        walletMatch: wallet.toLowerCase() === address?.toLowerCase(),
+        twitterMatch: xConnectionIdStr === twitterIDStr
       });
-      if (wallet.toLowerCase() === address?.toLowerCase() && xConnection?.id === twitterID) {
+      
+      // Check if wallet matches and twitter ID matches (convert both to strings for comparison)
+      const walletMatches = wallet.toLowerCase() === address?.toLowerCase();
+      const twitterMatches = xConnectionIdStr === twitterIDStr;
+      
+      if (walletMatches && twitterMatches) {
         if (isSuccess) {
           console.log("✅ Twitter verification successful, updating UI");
           setVerificationStatus({ status: "success", message: "X account verified successfully!" });
@@ -255,7 +266,14 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
           setVerificationStatus({ status: "error", message: errorMsg || "Verification failed" });
         }
       } else {
-        console.log("⚠️ Event doesn't match current user/wallet");
+        console.log("⚠️ Event doesn't match current user/wallet:", {
+          walletMatch: walletMatches,
+          twitterMatch: twitterMatches,
+          eventTwitterID: twitterIDStr,
+          currentTwitterID: xConnectionIdStr,
+          eventWallet: wallet,
+          currentAddress: address
+        });
       }
     },
     (farcasterFid, wallet, isSuccess, errorMsg) => {
@@ -402,6 +420,110 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
       return () => clearTimeout(timer);
     }
   }, [isFarcasterVerifying, hash, isConfirmed]);
+
+  // Track Twitter transaction confirmation and poll for verification status
+  // Use a ref to track if we've already shown the message to prevent loops
+  const [hasShownCanisterMessage, setHasShownCanisterMessage] = useState(false);
+  const [isPollingVerification, setIsPollingVerification] = useState(false);
+  
+  useEffect(() => {
+    if (hash && isConfirmed && step === 3 && verificationStatus?.status === "pending" && !hasShownCanisterMessage && xConnection?.id && address) {
+      console.log("📝 Transaction confirmed, waiting for canister to process verification...");
+      console.log("📝 Canister will process the event and the contract will emit TwitterVerificationResult");
+      
+      // Update message to indicate canister is processing (only once)
+      const timeout = setTimeout(() => {
+        console.log("⏰ Starting to poll for verification status...");
+        setVerificationStatus({ 
+          status: "pending", 
+          message: "Transaction confirmed! Waiting for canister to process verification..." 
+        });
+        setHasShownCanisterMessage(true);
+        setIsPollingVerification(true);
+      }, 5000); // Wait 5 seconds before starting to poll (give canister time to process)
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [hash, isConfirmed, step, verificationStatus?.status, hasShownCanisterMessage, xConnection?.id, address]);
+  
+  // Poll contract to check if verification completed (fallback if event listener doesn't catch it)
+  useEffect(() => {
+    if (!isPollingVerification || !xConnection?.id || !address || step !== 3 || verificationStatus?.status !== "pending") {
+      return;
+    }
+    
+    let pollCount = 0;
+    const maxPolls = 30; // Poll for up to 3 minutes (30 * 6 seconds)
+    const pollInterval = 6000; // Poll every 6 seconds
+    let pollTimer: NodeJS.Timeout | null = null;
+    
+    const pollVerification = async () => {
+      try {
+        const { readContract } = await import("wagmi/actions");
+        const { createPublicClient, http } = await import("viem");
+        const { base } = await import("viem/chains");
+        const { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } = await import("@/lib/contracts/accountManager");
+        
+        const publicClient = createPublicClient({
+          chain: base,
+          transport: http()
+        });
+        
+        const twitterID = BigInt(xConnection.id);
+        console.log(`🔍 Polling verification status (attempt ${pollCount + 1}/${maxPolls})...`);
+        
+        const user = await publicClient.readContract({
+          address: ACCOUNT_MANAGER_ADDRESS,
+          abi: ACCOUNT_MANAGER_ABI,
+          functionName: "getUserByTwitterID",
+          args: [twitterID],
+        }) as any;
+        
+        if (user && user.primaryWallet && user.primaryWallet.toLowerCase() === address.toLowerCase()) {
+          console.log("✅ Verification confirmed by polling contract!");
+          setIsPollingVerification(false);
+          setVerificationStatus({ status: "success", message: "X account verified successfully!" });
+          setTimeout(() => {
+            console.log("🚀 Advancing to success screen");
+            setStep(4);
+          }, 1500);
+          return;
+        }
+      } catch (error: any) {
+        // If getUserByTwitterID throws (user doesn't exist), verification hasn't completed yet
+        if (error?.message?.includes("UserNotExist") || error?.message?.includes("user does not exist")) {
+          // Continue polling - this is expected until verification completes
+        } else {
+          console.error("❌ Error polling verification status:", error);
+        }
+      }
+      
+      pollCount++;
+      if (pollCount < maxPolls && isPollingVerification) {
+        pollTimer = setTimeout(pollVerification, pollInterval);
+      } else {
+        console.log("⏰ Polling timeout reached. Please check verification status manually.");
+        setIsPollingVerification(false);
+      }
+    };
+    
+    // Start polling immediately
+    pollVerification();
+    
+    return () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
+    };
+  }, [isPollingVerification, xConnection?.id, address, step, verificationStatus?.status]);
+  
+  // Reset the flags when starting a new verification
+  useEffect(() => {
+    if (step === 3 && !hash) {
+      setHasShownCanisterMessage(false);
+      setIsPollingVerification(false);
+    }
+  }, [step, hash]);
 
   const handleNext = () => {
     if (step < SLIDES.length - 1) {
