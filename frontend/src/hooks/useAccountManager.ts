@@ -103,9 +103,9 @@ export function useAccountManager() {
 
         // First, try to use the existing connector if available (works for Coinbase, etc.)
         if (connector) {
-          try {
+        try {
             console.log("🔄 Reconnecting existing connector:", connector.name, connector.id);
-            await connect({ connector });
+          await connect({ connector });
             // Wait for connection to establish
             await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (err) {
@@ -169,7 +169,7 @@ export function useAccountManager() {
               console.log("🔄 Trying connector:", connectorToTry.name, connectorToTry.id);
               await connect({ connector: connectorToTry });
               await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (err) {
+        } catch (err) {
               console.error("❌ Failed to connect connector:", err);
             }
           }
@@ -219,12 +219,12 @@ export function useAccountManager() {
         // writeContract doesn't return the hash directly - it's set in the hook state
         // The hash will be available in the `hash` variable from useWriteContract hook
         await writeContract({
-          address: ACCOUNT_MANAGER_ADDRESS,
-          abi: ACCOUNT_MANAGER_ABI,
-          functionName: "requestTwitterVerificationByAuthCode",
-          args: [authCode, BigInt(twitterID), tweetID],
-          chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
-        });
+        address: ACCOUNT_MANAGER_ADDRESS,
+        abi: ACCOUNT_MANAGER_ABI,
+        functionName: "requestTwitterVerificationByAuthCode",
+        args: [authCode, BigInt(twitterID), tweetID],
+        chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
+      });
         console.log("✅ Transaction sent successfully. Hash will be available in hook state.");
         // Note: The hash will be available via the `hash` variable from useWriteContract
         // and will be logged when the transaction is confirmed
@@ -282,26 +282,26 @@ export function useAccountManager() {
 
         // If still not connected, try to find and connect the appropriate connector
         if (!isConnected) {
-          const dynamicWallet = dynamicContext?.primaryWallet;
-          
-          if (dynamicWallet) {
+        const dynamicWallet = dynamicContext?.primaryWallet;
+        
+        if (dynamicWallet) {
             console.log("🔍 Dynamic wallet detected, searching for connectors...");
             
             // Try to find Dynamic connector first
-            const dynamicConnector = connectors.find(c => {
-              const connectorId = (c as { id?: string }).id || '';
-              return c.id === 'dynamic' || 
-                     c.name?.toLowerCase().includes('dynamic') ||
-                     connectorId.includes('dynamic');
-            });
-            
-            if (dynamicConnector) {
-              try {
-                console.log("🔄 Connecting Dynamic wallet to wagmi...");
-                await connect({ connector: dynamicConnector });
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              } catch (err) {
-                console.error("❌ Failed to connect Dynamic connector:", err);
+          const dynamicConnector = connectors.find(c => {
+            const connectorId = (c as { id?: string }).id || '';
+            return c.id === 'dynamic' || 
+                   c.name?.toLowerCase().includes('dynamic') ||
+                   connectorId.includes('dynamic');
+          });
+          
+          if (dynamicConnector) {
+            try {
+              console.log("🔄 Connecting Dynamic wallet to wagmi...");
+              await connect({ connector: dynamicConnector });
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (err) {
+              console.error("❌ Failed to connect Dynamic connector:", err);
                 // Continue to try other connectors
               }
             }
@@ -374,12 +374,12 @@ export function useAccountManager() {
         // writeContract doesn't return the hash directly - it's set in the hook state
         // The hash will be available in the `hash` variable from useWriteContract hook
         await writeContract({
-          address: ACCOUNT_MANAGER_ADDRESS,
-          abi: ACCOUNT_MANAGER_ABI,
-          functionName: "requestFarcasterVerification",
-          args: [BigInt(farcasterFid), address],
-          chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
-        });
+        address: ACCOUNT_MANAGER_ADDRESS,
+        abi: ACCOUNT_MANAGER_ABI,
+        functionName: "requestFarcasterVerification",
+        args: [BigInt(farcasterFid), address],
+        chainId: BASE_MAINNET_CHAIN_ID, // Explicitly set chain ID
+      });
         console.log("✅ Transaction sent successfully. Hash will be available in hook state.");
         // Note: The hash will be available via the `hash` variable from useWriteContract
         // and will be logged when the transaction is confirmed
