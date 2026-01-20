@@ -13,13 +13,6 @@ import "./lib/Timelock.sol";
 import "./lib/UserAccount.sol";
 import "./lib/UserWallets.sol";
 
-contract GMAccountManager is ERC1967Proxy {
-    constructor(
-        address _logic,
-        bytes memory _data
-    ) ERC1967Proxy(_logic, _data) {}
-}
-
 contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using Timelock for Timelock.Storage;
     using UserAccount for UserAccount.Storage;
@@ -88,12 +81,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function initialize() public initializer {
         __Ownable_init(_msgSender());
         __UUPSUpgradeable_init();
-        
+
         timelockStorage.timeDelay = 3 days;
     }
 
-    function setICPAccountManagementAddress(address icpCanister) onlyOwner {
-        icpGmAccountManagementMsgSender = icpCanister
+    function setICPAccountManagementAddress(
+        address icpCanister
+    ) public onlyOwner {
+        icpGmAccountManagementMsgSender = icpCanister;
     }
 
     function _authorizeUpgrade(
@@ -192,14 +187,6 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
-    function twitterVerificationError(
-        address wallet,
-        uint256 twitterID,
-        string errorMsg
-    ) onlyICPCanister {
-        emit TwitterVerificationResult(wallet, twitterID, faslse, errorMsg);
-    }
-
     function getTwitterAccounts(
         uint64 start,
         uint16 count
@@ -278,15 +265,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 farcasterFid,
         address wallet,
         string calldata errorMsg
-    ) external {
-        emit FarcasterVerificationResult(farcasterFid, wallet, false, errorMsg);
-    }
-
-    function farcasterVerificationError(
-        uint256 farcasterFid,
-        address wallet,
-        string calldata errorMsg
-    ) onlyICPCanister {
+    ) public onlyICPCanister {
         emit FarcasterVerificationResult(farcasterFid, wallet, false, errorMsg);
     }
 
@@ -362,12 +341,16 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 farcasterFid,
         HumanVerification humanVerification
     ) public onlyICPCanister returns (uint256) {
-        uint256[] memory existingUserIds = new uint256[](0);
+        // Max possible entries: wallets.length + 2 (twitter + farcaster)
+        uint256[] memory existingUserIds = new uint256[](wallets.length + 2);
+        uint256 existingUserIdsCount = 0;
         uint256 minimumExistingUserId = type(uint256).max;
+
         for (uint256 i = 0; i < wallets.length; i++) {
             uint256 existingUserId = userWallets.userIdByWallet(wallets[i]);
             if (existingUserId != 0 && existingUserId != userId) {
-                existingUserIds.push(existingUserId);
+                existingUserIds[existingUserIdsCount] = existingUserId;
+                existingUserIdsCount++;
                 if (existingUserId < minimumExistingUserId) {
                     minimumExistingUserId = existingUserId;
                 }
@@ -379,7 +362,8 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 twitterId
             );
             if (existingUserId != 0 && existingUserId != userId) {
-                existingUserIds.push(existingUserId);
+                existingUserIds[existingUserIdsCount] = existingUserId;
+                existingUserIdsCount++;
                 if (existingUserId < minimumExistingUserId) {
                     minimumExistingUserId = existingUserId;
                 }
@@ -391,18 +375,19 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 farcasterFid
             );
             if (existingUserId != 0 && existingUserId != userId) {
-                existingUserIds.push(existingUserId);
+                existingUserIds[existingUserIdsCount] = existingUserId;
+                existingUserIdsCount++;
                 if (existingUserId < minimumExistingUserId) {
                     minimumExistingUserId = existingUserId;
                 }
             }
         }
 
-        if (existingUserIds.length > 0) {
+        if (existingUserIdsCount > 0) {
             userId = minimumExistingUserId;
 
-            if (existingUserIds.length > 1) {
-                for (uint256 i = 1; i < existingUserIds.length; i++) {
+            if (existingUserIdsCount > 1) {
+                for (uint256 i = 1; i < existingUserIdsCount; i++) {
                     if (existingUserIds[i] != minimumExistingUserId) {
                         _removeUser(existingUserIds[i], true);
                     }

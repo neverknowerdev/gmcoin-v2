@@ -10,13 +10,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import "./lib/Timelock.sol";
 
-contract GMCoin is ERC1967Proxy {
-    constructor(
-        address _logic,
-        bytes memory _data
-    ) ERC1967Proxy(_logic, _data) {}
-}
-
 contract GMCoinImplementation is
     Initializable,
     OwnableUpgradeable,
