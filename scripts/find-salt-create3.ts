@@ -125,7 +125,7 @@ function buildTargetsFromEnv(): SearchTarget[] {
 }
 
 function matchesTarget(address: string, target: SearchTarget): boolean {
-	const candidate = address.toLowerCase();
+	const candidate = address;
 	const exactMatch = target.exact ? candidate === target.exact : true;
 	const prefixMatch = target.prefix
 		? candidate.startsWith("0x" + target.prefix)

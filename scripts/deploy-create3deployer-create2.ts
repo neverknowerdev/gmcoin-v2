@@ -1,13 +1,31 @@
-import { ethers } from "hardhat";
+import { ethers, run } from "hardhat";
 import { concat, getCreate2Address, keccak256 } from "ethers";
 import { normalizeSalt } from "./utils/create3";
+
+async function verifyContract(address: string, constructorArguments: any[] = []) {
+    console.log("\n=== Verifying Contract ===");
+    console.log("Address:", address);
+    try {
+        await run("verify:verify", {
+            address,
+            constructorArguments,
+        });
+        console.log("✅ Contract verified successfully");
+    } catch (error: any) {
+        if (error.message.includes("Already Verified")) {
+            console.log("✅ Contract already verified");
+        } else {
+            console.error("❌ Verification failed:", error.message);
+        }
+    }
+}
 
 const DEFAULT_CREATE2_FACTORY = "0x4e59b44847b379578588920ca78fbf26c0b4956c";
 
 async function main() {
     const [signer] = await ethers.getSigners();
 
-    const saltInput = process.env.CREATE3_FACTORY_SALT || "gmcoin-create3-factory";
+    const saltInput = process.env.CREATE3_FACTORY_SALT || "gmcoin-deterministic-deployer";
     const salt = normalizeSalt(saltInput);
 
     const create2FactoryAddress =
@@ -63,6 +81,9 @@ async function main() {
 
     console.log("Deployment confirmed in block:", receipt.blockNumber);
     console.log("Create3Deployer deployed at:", predictedAddress);
+
+    // Verify the contract (no constructor arguments)
+    await verifyContract(predictedAddress, []);
 }
 
 main().catch((err) => {

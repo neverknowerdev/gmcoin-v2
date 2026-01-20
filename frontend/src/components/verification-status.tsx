@@ -3,9 +3,10 @@
 import { useReadContract, usePublicClient } from "wagmi";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { baseSepolia } from "wagmi/chains";
+import { useMiniKit } from "@coinbase/onchainkit/minikit";
+import { getExpectedChainId } from "@/lib/chains/config";
 
 type VerificationStatusProps = {
   twitterId?: string;
@@ -14,7 +15,10 @@ type VerificationStatusProps = {
 
 export function VerificationStatus({ twitterId, farcasterFid }: VerificationStatusProps) {
   const { address } = useWalletConnection();
-  const publicClient = usePublicClient({ chainId: baseSepolia.id });
+  const { context } = useMiniKit();
+  const isMiniApp = useMemo(() => Boolean(context), [context]);
+  const expectedChainId = useMemo(() => getExpectedChainId(isMiniApp), [isMiniApp]);
+  const publicClient = usePublicClient({ chainId: expectedChainId });
   const [checkedTwitter, setCheckedTwitter] = useState(false);
   const [checkedFarcaster, setCheckedFarcaster] = useState(false);
   const [twitterTimeout, setTwitterTimeout] = useState(false);
@@ -34,7 +38,7 @@ export function VerificationStatus({ twitterId, farcasterFid }: VerificationStat
     abi: ACCOUNT_MANAGER_ABI,
     functionName: "getUserByTwitterID",
     args: twitterId ? [BigInt(twitterId)] : undefined,
-    chainId: baseSepolia.id,
+    chainId: expectedChainId,
     query: {
       enabled: !!twitterId && checkedTwitter && !!address && ACCOUNT_MANAGER_ADDRESS !== "0x0000000000000000000000000000000000000000",
       retry: 0, // Disable retries to fail faster
@@ -57,7 +61,7 @@ export function VerificationStatus({ twitterId, farcasterFid }: VerificationStat
     abi: ACCOUNT_MANAGER_ABI,
     functionName: "getUserByFarcasterFID",
     args: farcasterFid ? [BigInt(farcasterFid)] : undefined,
-    chainId: baseSepolia.id,
+    chainId: expectedChainId,
     query: {
       enabled: !!farcasterFid && checkedFarcaster && !!address && ACCOUNT_MANAGER_ADDRESS !== "0x0000000000000000000000000000000000000000",
       retry: 0, // Disable retries to fail faster
@@ -136,7 +140,7 @@ export function VerificationStatus({ twitterId, farcasterFid }: VerificationStat
         checkedTwitter,
         checkedFarcaster,
         contractAddress: ACCOUNT_MANAGER_ADDRESS,
-        chainId: baseSepolia.id,
+        chainId: expectedChainId,
         twitterLoading: isLoadingTwitter,
         twitterTimeout,
         twitterError: twitterError ? {

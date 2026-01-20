@@ -3,14 +3,13 @@
 import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
 import { EthereumWalletConnectors } from "@dynamic-labs/ethereum";
 import { PropsWithChildren } from "react";
-import { baseSepolia } from "wagmi/chains";
+import { getBrowserChain, getRpcUrl } from "@/lib/chains/config";
 
 export function DynamicProvider({ children }: PropsWithChildren) {
-  // Use Coinbase Developer RPC for better reliability
-  const baseSepoliaRpcUrl =
-    process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL ?? 
-    "https://api.developer.coinbase.com/rpc/v1/base-sepolia/f1PR0fXuOM3NcQ8IuI3U98AiaMzXv-Vl";
-  const baseSepoliaRpcUrls = [baseSepoliaRpcUrl];
+  // Get the target chain for browser wallet (Base or Worldchain, Mainnet or Sepolia)
+  const targetChain = getBrowserChain();
+  const rpcUrl = getRpcUrl(false); // false = isBrowser
+  const rpcUrls = [rpcUrl];
 
   return (
     <DynamicContextProvider
@@ -22,15 +21,15 @@ export function DynamicProvider({ children }: PropsWithChildren) {
         overrides: {
           evmNetworks: [
             {
-              blockExplorerUrls: baseSepolia.blockExplorers?.default?.url
-                ? [baseSepolia.blockExplorers.default.url]
+              blockExplorerUrls: targetChain.blockExplorers?.default?.url
+                ? [targetChain.blockExplorers.default.url]
                 : [],
-              chainId: baseSepolia.id,
+              chainId: targetChain.id,
               iconUrls: [],
-              name: baseSepolia.name,
-              nativeCurrency: baseSepolia.nativeCurrency,
-              networkId: baseSepolia.id,
-              rpcUrls: baseSepoliaRpcUrls,
+              name: targetChain.name,
+              nativeCurrency: targetChain.nativeCurrency,
+              networkId: targetChain.id,
+              rpcUrls: rpcUrls,
             },
           ],
         },

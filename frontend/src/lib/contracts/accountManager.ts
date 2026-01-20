@@ -42,6 +42,19 @@ export const ACCOUNT_MANAGER_ABI = [
     type: "function",
   },
   {
+    inputs: [
+      {
+        internalType: "bytes32",
+        name: "attestationUID",
+        type: "bytes32",
+      },
+    ],
+    name: "requestCoinbaseVerification",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
     anonymous: false,
     inputs: [
       {
@@ -154,6 +167,56 @@ export const ACCOUNT_MANAGER_ABI = [
     type: "event",
   },
   {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "wallet",
+        type: "address",
+      },
+      {
+        indexed: false,
+        internalType: "bytes32",
+        name: "attestationUID",
+        type: "bytes32",
+      },
+    ],
+    name: "VerifyCoinbaseRequested",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "wallet",
+        type: "address",
+      },
+      {
+        indexed: false,
+        internalType: "bytes32",
+        name: "attestationUID",
+        type: "bytes32",
+      },
+      {
+        indexed: false,
+        internalType: "bool",
+        name: "isSuccess",
+        type: "bool",
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "errorMsg",
+        type: "string",
+      },
+    ],
+    name: "CoinbaseVerificationResult",
+    type: "event",
+  },
+  {
     inputs: [
       {
         internalType: "uint256",
@@ -194,6 +257,11 @@ export const ACCOUNT_MANAGER_ABI = [
             internalType: "uint256",
             name: "farcasterFid",
             type: "uint256",
+          },
+          {
+            internalType: "bytes32",
+            name: "coinbaseAttestationUID",
+            type: "bytes32",
           },
         ],
         internalType: "struct AccountManager.UnifiedUser",
@@ -245,6 +313,67 @@ export const ACCOUNT_MANAGER_ABI = [
             internalType: "uint256",
             name: "farcasterFid",
             type: "uint256",
+          },
+          {
+            internalType: "bytes32",
+            name: "coinbaseAttestationUID",
+            type: "bytes32",
+          },
+        ],
+        internalType: "struct AccountManager.UnifiedUser",
+        name: "",
+        type: "tuple",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "wallet",
+        type: "address",
+      },
+    ],
+    name: "getUserByWallet",
+    outputs: [
+      {
+        components: [
+          {
+            internalType: "uint256",
+            name: "userId",
+            type: "uint256",
+          },
+          {
+            internalType: "address",
+            name: "primaryWallet",
+            type: "address",
+          },
+          {
+            internalType: "enum AccountManager.HumanVerification",
+            name: "humanVerification",
+            type: "uint8",
+          },
+          {
+            internalType: "uint32",
+            name: "createdAt",
+            type: "uint32",
+          },
+          {
+            internalType: "uint256",
+            name: "twitterId",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "farcasterFid",
+            type: "uint256",
+          },
+          {
+            internalType: "bytes32",
+            name: "coinbaseAttestationUID",
+            type: "bytes32",
           },
         ],
         internalType: "struct AccountManager.UnifiedUser",

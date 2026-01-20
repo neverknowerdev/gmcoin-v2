@@ -12,14 +12,6 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./lib/Timelock.sol";
 import "./lib/UserAccount.sol";
 import "./lib/UserWallets.sol";
-import "hardhat/console.sol";
-
-contract GMAccountManager is ERC1967Proxy {
-    constructor(
-        address _logic,
-        bytes memory _data
-    ) ERC1967Proxy(_logic, _data) {}
-}
 
 contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using Timelock for Timelock.Storage;
@@ -52,7 +44,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error WalletNotLinked();
     error CannotRemoveUserActiveWorkers();
 
-    error GelatoOnly();
+    error OnlyICPCanisterCanCall();
 
     // Storage variables
     Timelock.Storage public timelockStorage;
@@ -60,8 +52,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     UserAccount.Storage internal twitterAccounts;
     UserWallets.Storage internal userWallets;
 
-    address gelatoDedicatedMsgSender;
-    uint256 nextUserId; // Auto-increment user ID counter
+    address icpGmAccountManagementMsgSender;
 
     uint256[10] __gap;
 
@@ -71,11 +62,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     // human verified
     mapping(uint256 => HumanVerification) humanVerificationByUserId;
+    // Coinbase verification attestation UIDs
+    mapping(uint256 => bytes32) coinbaseAttestationUIDByUserId;
     // stat
     mapping(uint256 => uint32) createdAtByUserId;
 
-    modifier onlyGelato() {
-        if (_msgSender() != gelatoDedicatedMsgSender) revert GelatoOnly();
+    modifier onlyICPCanister() {
+        if (_msgSender() != icpGmAccountManagementMsgSender)
+            revert OnlyICPCanisterCanCall();
         _;
     }
 
@@ -84,14 +78,17 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _disableInitializers();
     }
 
-    function initialize(
-        address _gelatoDedicatedMsgSender,
-        uint256 _timeDelay
-    ) public initializer {
+    function initialize() public initializer {
         __Ownable_init(_msgSender());
         __UUPSUpgradeable_init();
-        gelatoDedicatedMsgSender = _gelatoDedicatedMsgSender;
-        timelockStorage.timeDelay = _timeDelay;
+
+        timelockStorage.timeDelay = 3 days;
+    }
+
+    function setICPAccountManagementAddress(
+        address icpCanister
+    ) public onlyOwner {
+        icpGmAccountManagementMsgSender = icpCanister;
     }
 
     function _authorizeUpgrade(
@@ -102,14 +99,14 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         timelockStorage.scheduleUpgrade(newImplementation);
     }
 
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override onlyOwner {
-        timelockStorage.checkTimeDelay(newImplementation);
-        super.upgradeToAndCall(newImplementation, data);
-        timelockStorage.clearUpgrade();
-    }
+    // function upgradeToAndCall(
+    //     address newImplementation,
+    //     bytes memory data
+    // ) public payable override onlyOwner {
+    //     timelockStorage.checkTimeDelay(newImplementation);
+    //     super.upgradeToAndCall(newImplementation, data);
+    //     timelockStorage.clearUpgrade();
+    // }
 
     // Twitter events
     event VerifyTwitterRequested(
@@ -141,11 +138,22 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         string errorMsg
     );
 
+    event VerifyCoinbaseRequested(
+        address indexed wallet,
+        bytes32 attestationUID
+    );
+    event CoinbaseVerificationResult(
+        address indexed wallet,
+        bytes32 attestationUID,
+        bool isSuccess,
+        string errorMsg
+    );
+
     function twitterVerificationError(
         address wallet,
         uint256 twitterID,
         string calldata errorMsg
-    ) public onlyGelato {
+    ) public onlyICPCanister {
         emit TwitterVerificationResult(twitterID, wallet, false, errorMsg);
     }
 
@@ -257,8 +265,49 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 farcasterFid,
         address wallet,
         string calldata errorMsg
-    ) external {
+    ) public onlyICPCanister {
         emit FarcasterVerificationResult(farcasterFid, wallet, false, errorMsg);
+    }
+
+    // Coinbase verification functions
+    function requestCoinbaseVerification(bytes32 attestationUID) public {
+        emit VerifyCoinbaseRequested(_msgSender(), attestationUID);
+    }
+
+    function coinbaseVerificationError(
+        address wallet,
+        bytes32 attestationUID,
+        string calldata errorMsg
+    ) public onlyICPCanister {
+        emit CoinbaseVerificationResult(
+            wallet,
+            attestationUID,
+            false,
+            errorMsg
+        );
+    }
+
+    function setCoinbaseVerification(
+        address wallet,
+        bytes32 attestationUID
+    ) public onlyICPCanister {
+        uint256 userId = userWallets.userIdByWallet(wallet);
+        if (userId == 0) {
+            revert UserNotExist();
+        }
+
+        // Store attestation UID
+        coinbaseAttestationUIDByUserId[userId] = attestationUID;
+
+        // Set human verification status
+        humanVerificationByUserId[userId] = HumanVerification
+            .CoinbaseVerification;
+
+        emit HumanVerificationUpdated(
+            userId,
+            HumanVerification.CoinbaseVerification
+        );
+        emit CoinbaseVerificationResult(wallet, attestationUID, true, "");
     }
 
     // Account management events
@@ -268,10 +317,15 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 twitterId,
         uint256 farcasterFid
     );
+    event UserRemoved(uint256 indexed userId);
     event SocialAccountLinked(
         uint256 indexed userId,
         string platform,
         uint256 platformId
+    );
+    event PrimaryWalletUpdated(
+        uint256 indexed userId,
+        address indexed primaryWallet
     );
     event WalletLinked(uint256 indexed userId, address indexed wallet);
     event HumanVerificationUpdated(
@@ -280,14 +334,127 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     );
 
     // Unified User System Functions
-
-    function createOrLinkUser(
-        address wallet,
+    function createOrUpdateUser(
+        uint256 userId,
+        address[] memory wallets,
         uint256 twitterId,
-        uint256 farcasterFid
-    ) public onlyGelato returns (uint256) {
-        console.log("createOrLinkUser", wallet, twitterId, farcasterFid);
-        return _createOrLinkUser(wallet, twitterId, farcasterFid);
+        uint256 farcasterFid,
+        HumanVerification humanVerification
+    ) public onlyICPCanister returns (uint256) {
+        // Max possible entries: wallets.length + 2 (twitter + farcaster)
+        uint256[] memory existingUserIds = new uint256[](wallets.length + 2);
+        uint256 existingUserIdsCount = 0;
+        uint256 minimumExistingUserId = type(uint256).max;
+
+        for (uint256 i = 0; i < wallets.length; i++) {
+            uint256 existingUserId = userWallets.userIdByWallet(wallets[i]);
+            if (existingUserId != 0 && existingUserId != userId) {
+                existingUserIds[existingUserIdsCount] = existingUserId;
+                existingUserIdsCount++;
+                if (existingUserId < minimumExistingUserId) {
+                    minimumExistingUserId = existingUserId;
+                }
+            }
+        }
+
+        if (twitterId != 0) {
+            uint256 existingUserId = twitterAccounts.userIdByAccountId(
+                twitterId
+            );
+            if (existingUserId != 0 && existingUserId != userId) {
+                existingUserIds[existingUserIdsCount] = existingUserId;
+                existingUserIdsCount++;
+                if (existingUserId < minimumExistingUserId) {
+                    minimumExistingUserId = existingUserId;
+                }
+            }
+        }
+
+        if (farcasterFid != 0) {
+            uint256 existingUserId = farcasterAccounts.userIdByAccountId(
+                farcasterFid
+            );
+            if (existingUserId != 0 && existingUserId != userId) {
+                existingUserIds[existingUserIdsCount] = existingUserId;
+                existingUserIdsCount++;
+                if (existingUserId < minimumExistingUserId) {
+                    minimumExistingUserId = existingUserId;
+                }
+            }
+        }
+
+        if (existingUserIdsCount > 0) {
+            userId = minimumExistingUserId;
+
+            if (existingUserIdsCount > 1) {
+                for (uint256 i = 1; i < existingUserIdsCount; i++) {
+                    if (existingUserIds[i] != minimumExistingUserId) {
+                        _removeUser(existingUserIds[i], true);
+                    }
+                }
+            }
+        }
+
+        return
+            _createOrUpdateUser(
+                userId,
+                wallets,
+                twitterId,
+                farcasterFid,
+                humanVerification
+            );
+    }
+
+    function _createOrUpdateUser(
+        uint256 userId,
+        address[] memory wallets,
+        uint256 twitterId,
+        uint256 farcasterFid,
+        HumanVerification humanVerification
+    ) internal returns (uint256) {
+        if (userIndexById[userId] == 0) {
+            allUsers.push(userId);
+            userIndexById[userId] = allUsers.length - 1;
+            createdAtByUserId[userId] = uint32(block.timestamp);
+
+            emit UserCreated(userId, wallets[0], twitterId, farcasterFid);
+        }
+
+        for (uint256 i = 0; i < wallets.length; i++) {
+            if (userWallets.userIdByWallet(wallets[i]) == 0) {
+                userWallets.addWallet(userId, wallets[i]);
+            }
+        }
+
+        if (userWallets.primaryWalletByUserId(userId) != wallets[0]) {
+            userWallets.setPrimaryWallet(userId, wallets[0]);
+            emit PrimaryWalletUpdated(userId, wallets[0]);
+        }
+
+        if (
+            twitterId != 0 && twitterAccounts.userIdByAccountId(twitterId) == 0
+        ) {
+            twitterAccounts.addAccount(userId, twitterId);
+        }
+        if (
+            farcasterFid != 0 &&
+            farcasterAccounts.userIdByAccountId(farcasterFid) == 0
+        ) {
+            farcasterAccounts.addAccount(userId, farcasterFid);
+        }
+
+        if (wallets.length > 1) {
+            for (uint256 i = 1; i < wallets.length; i++) {
+                emit WalletLinked(userId, wallets[i]);
+            }
+        }
+
+        if (humanVerificationByUserId[userId] != humanVerification) {
+            humanVerificationByUserId[userId] = humanVerification;
+            emit HumanVerificationUpdated(userId, humanVerification);
+        }
+
+        return userId;
     }
 
     function linkAdditionalWallet(
@@ -305,20 +472,17 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
         if (recoveredSigner != newWallet) revert InvalidSignature();
 
+        _linkWalletToUser(userWallets.userIdByWallet(_msgSender()), newWallet);
+    }
+
+    function _linkWalletToUser(uint256 userId, address newWallet) internal {
         if (userWallets.userIdByWallet(newWallet) != 0) {
-            _mergeUsers(
-                userWallets.userIdByWallet(_msgSender()),
-                userWallets.userIdByWallet(newWallet),
-                true,
-                true
-            );
-            return;
+            revert WalletAlreadyLinked();
         }
 
-        userWallets.addWallet(
-            userWallets.userIdByWallet(_msgSender()),
-            newWallet
-        );
+        userWallets.addWallet(userId, newWallet);
+
+        emit WalletLinked(userId, newWallet);
     }
 
     function setUserHumanVerification(
@@ -333,12 +497,12 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         userWallets.setPrimaryWallet(userId, newPrimaryWallet);
     }
 
-    function removeUser(uint256 userId) internal {
-        _removeUser(userId);
-    }
+    // function removeUser(uint256 userId) internal {
+    //     _removeUser(userId);
+    // }
 
     function removeMe() public {
-        removeUser(userWallets.userIdByWallet(_msgSender()));
+        _removeUser(userWallets.userIdByWallet(_msgSender()), false);
     }
 
     // Query functions for unified users
@@ -354,6 +518,7 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint32 createdAt; // Creation timestamp
         uint256 twitterId; // Twitter ID (0 if not linked)
         uint256 farcasterFid; // Farcaster FID (0 if not linked)
+        bytes32 coinbaseAttestationUID; // Coinbase attestation UID (0x0 if not verified)
         // Future social platforms can be added here
     }
 
@@ -368,7 +533,8 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 humanVerificationByUserId[userId],
                 createdAtByUserId[userId],
                 twitterAccounts.accountIdByUserId(userId),
-                farcasterAccounts.accountIdByUserId(userId)
+                farcasterAccounts.accountIdByUserId(userId),
+                coinbaseAttestationUIDByUserId[userId]
             );
     }
 
@@ -376,7 +542,6 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 twitterID
     ) public view returns (UnifiedUser memory) {
         uint256 userId = twitterAccounts.userIdByAccountId(twitterID);
-        console.log("found userId", userId);
         if (userId == 0) revert UserNotExist();
         return getUnifiedUser(userId);
     }
@@ -385,7 +550,6 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 farcasterFID
     ) public view returns (UnifiedUser memory) {
         uint256 userId = farcasterAccounts.userIdByAccountId(farcasterFID);
-        console.log("found userId", userId);
         if (userId == 0) revert UserNotExist();
         return getUnifiedUser(userId);
     }
@@ -396,42 +560,21 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return userWallets.primaryWalletByUserId(userId);
     }
 
-    function _createUser(
-        address primaryWallet,
-        uint256 twitterId,
-        uint256 farcasterFid
-    ) internal returns (uint256) {
-        nextUserId++;
-        uint256 userId = nextUserId;
-
-        allUsers.push(userId);
-        userIndexById[userId] = allUsers.length - 1;
-
-        userWallets.addWallet(userId, primaryWallet);
-
-        if (twitterId != 0) {
-            twitterAccounts.addAccount(userId, twitterId);
-            emit TwitterVerificationResult(twitterId, primaryWallet, true, "");
-        }
-        if (farcasterFid != 0) {
-            farcasterAccounts.addAccount(userId, farcasterFid);
-            emit FarcasterVerificationResult(
-                farcasterFid,
-                primaryWallet,
-                true,
-                ""
-            );
-        }
-
-        createdAtByUserId[userId] = uint32(block.timestamp);
-
-        return userId;
+    function getUserByWallet(
+        address wallet
+    ) public view returns (UnifiedUser memory) {
+        uint256 userId = userWallets.userIdByWallet(wallet);
+        if (userId == 0) revert UserNotExist();
+        return getUnifiedUser(userId);
     }
 
-    function _removeUser(uint256 userId) internal {
+    function _removeUser(uint256 userId, bool ignoreIfNotExist) internal {
         uint256 userIndex = userIndexById[userId];
-        if (userIndex >= allUsers.length || allUsers[userIndex] != userId)
-            revert UserNotExist();
+        if (allUsers[userIndex] != userId) {
+            if (!ignoreIfNotExist) revert UserNotExist();
+            return;
+        }
+        if (userIndex >= allUsers.length) revert UserNotExist();
 
         uint256 twitterId = twitterAccounts.accountIdByUserId(userId);
         if (twitterId != 0) {
@@ -454,175 +597,10 @@ contract AccountManager is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         delete userIndexById[userId];
 
         delete humanVerificationByUserId[userId];
+        delete coinbaseAttestationUIDByUserId[userId];
         delete createdAtByUserId[userId];
-    }
 
-    function _mergeUsers(
-        uint256 fromUserId,
-        uint256 toUserId,
-        bool overrideTwitterId,
-        bool overrideFarcasterFid
-    ) internal returns (uint256) {
-        uint256 fromUserIndex = userIndexById[fromUserId];
-        uint256 toUserIndex = userIndexById[toUserId];
-        if (
-            fromUserIndex >= allUsers.length ||
-            allUsers[fromUserIndex] != fromUserId
-        ) revert FromUserNotExist();
-        if (toUserIndex >= allUsers.length || allUsers[toUserIndex] != toUserId)
-            revert ToUserNotExist();
-        if (fromUserId == toUserId) revert CannotMergeSameUser();
-
-        // Move social accounts if not already present
-        // twitter
-        uint256 oldTwitterId = twitterAccounts.accountIdByUserId(fromUserId);
-        uint256 newTwitterId = twitterAccounts.accountIdByUserId(toUserId);
-        if (
-            oldTwitterId != 0 &&
-            (newTwitterId == 0 || overrideTwitterId) &&
-            oldTwitterId != newTwitterId
-        ) {
-            // if no new twitterId exists, add the old one
-            if (newTwitterId == 0) {
-                twitterAccounts.addAccount(toUserId, oldTwitterId);
-            } else if (overrideTwitterId) {
-                // if overriding, remove the new one and add the old one
-                twitterAccounts.removeAccount(toUserId, newTwitterId);
-                twitterAccounts.addAccount(toUserId, oldTwitterId);
-            }
-        }
-
-        uint256 oldFarcasterFid = farcasterAccounts.accountIdByUserId(
-            fromUserId
-        );
-        uint256 newFarcasterFid = farcasterAccounts.accountIdByUserId(toUserId);
-        if (
-            oldFarcasterFid != 0 &&
-            (newFarcasterFid == 0 || overrideFarcasterFid) &&
-            oldFarcasterFid != newFarcasterFid
-        ) {
-            // if no new farcasterFid exists, add the old one
-            if (newFarcasterFid == 0) {
-                farcasterAccounts.addAccount(toUserId, oldFarcasterFid);
-            } else if (overrideFarcasterFid) {
-                // if overriding, remove the new one and add the old one
-                farcasterAccounts.removeAccount(toUserId, newFarcasterFid);
-                farcasterAccounts.addAccount(toUserId, oldFarcasterFid);
-            }
-        }
-
-        // Move all wallets from fromUser to toUser
-
-        userWallets.mergeUsers(
-            fromUserId,
-            toUserId,
-            userWallets.primaryWalletByUserId(toUserId)
-        );
-
-        _removeUser(fromUserId);
-
-        return toUserId;
-    }
-
-    function _linkSocialAccountToUser(
-        uint256 userId,
-        address wallet,
-        uint256 twitterId,
-        uint256 farcasterFid
-    ) internal {
-        uint256 userIndex = userIndexById[userId];
-        if (userIndex >= allUsers.length || allUsers[userIndex] != userId)
-            revert UserNotExist();
-
-        if (twitterId != 0) {
-            uint256 existingTwitterId = twitterAccounts.accountIdByUserId(
-                userId
-            );
-            if (existingTwitterId != twitterId && existingTwitterId != 0) {
-                twitterAccounts.removeAccount(userId, existingTwitterId);
-            }
-            twitterAccounts.addAccount(userId, twitterId);
-            emit TwitterVerificationResult(twitterId, wallet, true, "");
-        }
-        if (farcasterFid != 0) {
-            uint256 existingFarcasterFid = farcasterAccounts.accountIdByUserId(
-                userId
-            );
-            if (
-                existingFarcasterFid != farcasterFid &&
-                existingFarcasterFid != 0
-            ) {
-                farcasterAccounts.removeAccount(userId, existingFarcasterFid);
-            }
-            farcasterAccounts.addAccount(userId, farcasterFid);
-            emit FarcasterVerificationResult(farcasterFid, wallet, true, "");
-        }
-    }
-
-    function _createOrLinkUser(
-        address wallet,
-        uint256 twitterId,
-        uint256 farcasterFid
-    ) internal returns (uint256) {
-        uint256 existingUserId = userWallets.userIdByWallet(wallet);
-
-        if (existingUserId != 0) {
-            _linkSocialAccountToUser(
-                existingUserId,
-                wallet,
-                twitterId,
-                farcasterFid
-            );
-            return existingUserId;
-        }
-
-        // If wallet has no unified user yet, try to attach to an existing user by social IDs
-        uint256 userIdByTwitter = twitterId != 0
-            ? twitterAccounts.userIdByAccountId(twitterId)
-            : 0;
-        uint256 userIdByFarcaster = farcasterFid != 0
-            ? farcasterAccounts.userIdByAccountId(farcasterFid)
-            : 0;
-
-        if (
-            userIdByTwitter != 0 &&
-            userIdByFarcaster != 0 &&
-            userIdByTwitter != userIdByFarcaster
-        ) {
-            uint256 userId = _mergeUsers(
-                userIdByTwitter,
-                userIdByFarcaster,
-                true,
-                false
-            );
-            if (userWallets.userIdByWallet(wallet) == 0) {
-                userWallets.addWallet(userId, wallet);
-            }
-            return userId;
-        }
-
-        uint256 targetUserId = userIdByTwitter != 0
-            ? userIdByTwitter
-            : userIdByFarcaster;
-        if (targetUserId != 0) {
-            // Link socials to the target user if missing
-            _linkSocialAccountToUser(
-                targetUserId,
-                wallet,
-                twitterId,
-                farcasterFid
-            );
-
-            // Link the wallet to that unified user if not linked yet
-            if (userWallets.userIdByWallet(wallet) == 0) {
-                userWallets.addWallet(targetUserId, wallet);
-            }
-
-            return targetUserId;
-        }
-
-        // Otherwise, create a new unified user
-        return _createUser(wallet, twitterId, farcasterFid);
+        emit UserRemoved(userId);
     }
 
     function _setUserHumanVerification(

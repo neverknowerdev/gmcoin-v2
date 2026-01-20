@@ -3,29 +3,29 @@
 import { SafeArea } from "@coinbase/onchainkit/minikit";
 import { OnchainKitProvider } from "@coinbase/onchainkit";
 import { PropsWithChildren } from "react";
-import { baseSepolia } from "wagmi/chains";
 import { AuthKitProvider } from "@farcaster/auth-kit";
 import "@farcaster/auth-kit/styles.css";
+import { getMiniAppChain, getRpcUrl } from "@/lib/chains/config";
 
 export function Providers({ children }: PropsWithChildren) {
-  // Use the RPC URL that already includes the API key
-  const baseSepoliaRpcUrl =
-    process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL ?? "https://api.developer.coinbase.com/rpc/v1/base-sepolia/f1PR0fXuOM3NcQ8IuI3U98AiaMzXv-Vl";
-  
-  // Extract API key from RPC URL for OnchainKit
+  // Get the target chain for mini-app (Base Mainnet or Base Sepolia)
+  const targetChain = getMiniAppChain();
+  const rpcUrl = getRpcUrl(true); // true = isMiniApp
+
+  // Extract API key from RPC URL for OnchainKit if it's a Coinbase Developer URL
   // OnchainKit uses the API key to construct its RPC URLs, so we extract it from the provided URL
-  const rpcApiKey = baseSepoliaRpcUrl.split('/').pop() || "";
+  const rpcApiKey = rpcUrl.includes("/rpc/v1/") ? rpcUrl.split('/').pop() || "" : "";
   const apiKey = process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY ?? rpcApiKey;
 
   return (
     <AuthKitProvider
       config={{
-        rpcUrl: baseSepoliaRpcUrl,
+        rpcUrl: rpcUrl,
       }}
     >
       <OnchainKitProvider
         apiKey={apiKey}
-        chain={baseSepolia}
+        chain={targetChain}
         config={{
           appearance: {
             name: "GMcoin Mini App",

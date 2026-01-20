@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "canisters": {
+    "gmcoin_verifier": {
+      "main": "src/main.mo",
+      "type": "motoko",
+      "dependencies": [
+        "evm_rpc"
+      ]
+    },
+    "evm_rpc": {
+      "type": "pull",
+      "id": "7hfb6-caaaa-aaaar-qadga-cai"
+    }
+  }
+}

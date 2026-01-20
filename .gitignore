@@ -19,6 +19,7 @@
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
 
 npm-debug.log*
 yarn-debug.log*
@@ -31,3 +32,12 @@ typechain-types
 
 # Backend
 backend/.env
+
+# IDE
+.idea/
+
+# Types
+types/
+
+# Temporary files
+.tmp/

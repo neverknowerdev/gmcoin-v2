@@ -10,13 +10,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import "./lib/Timelock.sol";
 
-contract GMCoin is ERC1967Proxy {
-    constructor(
-        address _logic,
-        bytes memory _data
-    ) ERC1967Proxy(_logic, _data) {}
-}
-
 contract GMCoinImplementation is
     Initializable,
     OwnableUpgradeable,
@@ -30,34 +23,30 @@ contract GMCoinImplementation is
         _disableInitializers();
     }
 
-    error OnlyGelatoDedicatedMsgSender();
+    error OnlyICPCanisterMsgSender();
 
     Timelock.Storage public timelockStorage;
 
     address public feeAddress;
     address public treasuryAddress;
-    address public relayServerAddress;
     uint256 public coinsMultiplicator;
-    uint256 public epochDays;
 
-    address public gelatoDedicatedMsgSender;
+    address public ICPCanisterMsgSender;
 
     function initialize(
         address _owner,
         address _feeAddress,
         address _treasuryAddress,
         uint256 _coinsMultiplicator,
-        uint256 _epochDays,
-        address _gelatoDedicatedMsgSender,
+        address _ICPCanisterMsgSender,
         uint256 _timeDelay
     ) public initializer {
         feeAddress = _feeAddress;
         treasuryAddress = _treasuryAddress;
 
         coinsMultiplicator = _coinsMultiplicator;
-        epochDays = _epochDays;
 
-        gelatoDedicatedMsgSender = _gelatoDedicatedMsgSender;
+        ICPCanisterMsgSender = _ICPCanisterMsgSender;
 
         __Ownable_init(_owner);
         __ERC20_init("GM Coin", "GM");
@@ -74,14 +63,14 @@ contract GMCoinImplementation is
         timelockStorage.scheduleUpgrade(newImplementation);
     }
 
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override onlyOwner {
-        timelockStorage.checkTimeDelay(newImplementation);
-        super.upgradeToAndCall(newImplementation, data);
-        timelockStorage.clearUpgrade();
-    }
+    // function upgradeToAndCall(
+    //     address newImplementation,
+    //     bytes memory data
+    // ) public payable override onlyOwner {
+    //     timelockStorage.checkTimeDelay(newImplementation);
+    //     super.upgradeToAndCall(newImplementation, data);
+    //     timelockStorage.clearUpgrade();
+    // }
 
     function _update(
         address from,
@@ -108,12 +97,12 @@ contract GMCoinImplementation is
         super._update(from, to, value);
     }
 
-    function mintFromGelatoW3F(
+    function mintForUsers(
         address[] memory to,
         uint256[] memory amounts
     ) public {
-        if (msg.sender != gelatoDedicatedMsgSender) {
-            revert OnlyGelatoDedicatedMsgSender();
+        if (msg.sender != ICPCanisterMsgSender) {
+            revert OnlyICPCanisterMsgSender();
         }
 
         for (uint256 i = 0; i < to.length; i++) {
