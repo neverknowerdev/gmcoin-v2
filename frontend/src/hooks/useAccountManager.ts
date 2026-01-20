@@ -3,27 +3,34 @@
 import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from "wagmi";
 import { useWalletConnection } from "./useWalletConnection";
 import { ACCOUNT_MANAGER_ABI, ACCOUNT_MANAGER_ADDRESS } from "@/lib/contracts/accountManager";
-import { useCallback } from "react";
-import { baseSepolia } from "wagmi/chains";
-
-const BASE_SEPOLIA_CHAIN_ID = baseSepolia.id; // 84532
+import { useCallback, useMemo } from "react";
+import { useMiniKit } from "@coinbase/onchainkit/minikit";
+import { getExpectedChainId, getExpectedChainName } from "@/lib/chains/config";
 
 export function useAccountManager() {
   const { address } = useWalletConnection();
   const chainId = useChainId();
+  const { context } = useMiniKit();
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
 
+  // Determine if we're in mini-app
+  const isMiniApp = useMemo(() => Boolean(context), [context]);
+
+  // Get expected chain ID based on environment
+  const expectedChainId = useMemo(() => getExpectedChainId(isMiniApp), [isMiniApp]);
+  const expectedChainName = useMemo(() => getExpectedChainName(isMiniApp), [isMiniApp]);
+
   // Validate chain before transactions
   const validateChain = useCallback(() => {
-    if (chainId !== BASE_SEPOLIA_CHAIN_ID) {
-      const errorMsg = `Wrong network! Please switch to Base Sepolia (Chain ID: ${BASE_SEPOLIA_CHAIN_ID}). Current chain: ${chainId}`;
+    if (chainId !== expectedChainId) {
+      const errorMsg = `Wrong network! Please switch to ${expectedChainName} (Chain ID: ${expectedChainId}). Current chain: ${chainId}`;
       console.error("❌", errorMsg);
       throw new Error(errorMsg);
     }
-  }, [chainId]);
+  }, [chainId, expectedChainId, expectedChainName]);
 
   const requestTwitterVerification = useCallback(
     async (authCode: string, twitterID: string, tweetID: string) => {
@@ -34,7 +41,7 @@ export function useAccountManager() {
       // Validate chain before transaction
       validateChain();
 
-      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_SEPOLIA_CHAIN_ID);
+      console.log("🔗 Chain ID:", chainId, "Expected:", expectedChainId);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
 
       return writeContract({
@@ -42,10 +49,10 @@ export function useAccountManager() {
         abi: ACCOUNT_MANAGER_ABI,
         functionName: "requestTwitterVerificationByAuthCode",
         args: [authCode, BigInt(twitterID), tweetID],
-        chainId: BASE_SEPOLIA_CHAIN_ID, // Explicitly set chain ID
+        chainId: expectedChainId, // Explicitly set chain ID
       });
     },
-    [address, writeContract, validateChain, chainId]
+    [address, writeContract, validateChain, chainId, expectedChainId]
   );
 
   const requestFarcasterVerification = useCallback(
@@ -57,7 +64,7 @@ export function useAccountManager() {
       // Validate chain before transaction
       validateChain();
 
-      console.log("🔗 Chain ID:", chainId, "Expected:", BASE_SEPOLIA_CHAIN_ID);
+      console.log("🔗 Chain ID:", chainId, "Expected:", expectedChainId);
       console.log("📝 Contract address:", ACCOUNT_MANAGER_ADDRESS);
 
       return writeContract({
@@ -65,10 +72,10 @@ export function useAccountManager() {
         abi: ACCOUNT_MANAGER_ABI,
         functionName: "requestFarcasterVerification",
         args: [BigInt(farcasterFid), address],
-        chainId: BASE_SEPOLIA_CHAIN_ID, // Explicitly set chain ID
+        chainId: expectedChainId, // Explicitly set chain ID
       });
     },
-    [address, writeContract, validateChain, chainId]
+    [address, writeContract, validateChain, chainId, expectedChainId]
   );
 
   return {
@@ -81,7 +88,9 @@ export function useAccountManager() {
     hash,
     transactionHash: hash,
     chainId,
-    isCorrectChain: chainId === BASE_SEPOLIA_CHAIN_ID,
+    expectedChainId,
+    expectedChainName,
+    isCorrectChain: chainId === expectedChainId,
   };
 }
 

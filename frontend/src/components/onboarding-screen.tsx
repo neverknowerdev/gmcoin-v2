@@ -85,7 +85,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   const [step, setStep] = useState(0);
   const [xConnection, setXConnection] = useState<XProfile | null>(null);
   const [tweetID, setTweetID] = useState("");
-  
+
   // Farcaster SIWE hooks
   const {
     connect: connectFarcaster,
@@ -93,7 +93,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
     isConnected: isFarcasterConnected,
     url: farcasterUrl,
   } = useSignIn({});
-  
+
   const { profile: farcasterProfile } = useProfile();
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<{
@@ -102,9 +102,9 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const [authCode, setAuthCode] = useState<string>("");
-  
+
   const { requestTwitterVerification, isPending, hash, isConfirmed, error: txError, isCorrectChain, chainId } = useAccountManager();
-  
+
   // Generate auth code once when address is available
   useEffect(() => {
     if (address && !authCode) {
@@ -115,9 +115,10 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
       }, 0);
     }
   }, [address, authCode]);
-  
+
   const [isComplete, setIsCompleteState] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
+    return true;
     return window.sessionStorage.getItem(STORAGE_KEY) === "true";
   });
 
@@ -175,12 +176,12 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
   // Listen for X and Farcaster connection from popup message (not URL params to avoid navigation)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
+
     // Listen for postMessage from popup window
     const handleMessage = (event: MessageEvent) => {
       // Only handle messages from same origin for security
       if (event.origin !== window.location.origin) return;
-      
+
       if (event.data?.type === "X_AUTH_SUCCESS" && event.data?.connected) {
         void refreshXConnection();
         // Navigate to success screen after X connection
@@ -189,7 +190,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
           setStep(4);
         }
       }
-      
+
       // Farcaster uses SIWE, so no popup message needed
       // Connection is handled via useProfile hook
     };
@@ -251,7 +252,7 @@ export function OnboardingScreen({ children }: PropsWithChildren) {
     if (!authCode) return;
     const tweetText = encodeURIComponent(authCode);
     const twitterUrl = `https://twitter.com/intent/tweet?text=${tweetText}`;
-    
+
     if (isMiniApp) {
       void openUrl(twitterUrl);
     } else {

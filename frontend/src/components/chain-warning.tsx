@@ -2,25 +2,24 @@
 
 import { useAccountManager } from "@/hooks/useAccountManager";
 import { useWalletConnection } from "@/hooks/useWalletConnection";
-import { baseSepolia } from "wagmi/chains";
 import { useSwitchChain } from "wagmi";
 import { AlertTriangle } from "lucide-react";
 import { useEffect } from "react";
 
 export function ChainWarning() {
-  const { isCorrectChain, chainId } = useAccountManager();
+  const { isCorrectChain, chainId, expectedChainId, expectedChainName } = useAccountManager();
   const { isConnected } = useWalletConnection();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
 
   // Log chain info for debugging
   useEffect(() => {
     if (isConnected) {
-      console.log("🔗 Current chain ID:", chainId, "Expected:", baseSepolia.id);
+      console.log("🔗 Current chain ID:", chainId, "Expected:", expectedChainId, `(${expectedChainName})`);
       if (!isCorrectChain) {
-        console.warn("⚠️ Wrong network detected! Please switch to Base Sepolia");
+        console.warn(`⚠️ Wrong network detected! Please switch to ${expectedChainName}`);
       }
     }
-  }, [isConnected, chainId, isCorrectChain]);
+  }, [isConnected, chainId, isCorrectChain, expectedChainId, expectedChainName]);
 
   if (!isConnected || isCorrectChain) {
     return null;
@@ -28,7 +27,7 @@ export function ChainWarning() {
 
   const handleSwitch = () => {
     try {
-      switchChain({ chainId: baseSepolia.id });
+      switchChain({ chainId: expectedChainId });
     } catch (error) {
       console.error("Failed to switch chain:", error);
     }
@@ -42,13 +41,13 @@ export function ChainWarning() {
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm">Wrong Network!</p>
             <p className="text-xs text-white/80 mt-1">
-              Please switch to Base Sepolia (Chain ID: {baseSepolia.id})
+              Please switch to {expectedChainName} (Chain ID: {expectedChainId})
             </p>
             <p className="text-xs text-white/60 mt-1 break-all">
               Current: Chain ID {chainId}
             </p>
             <p className="text-xs text-white/60 mt-1">
-              Contract is deployed on Base Sepolia only
+              Contract is deployed on {expectedChainName} only
             </p>
           </div>
           <button
